@@ -1,26 +1,25 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Message, IntentionResponse, NewsArticle } from '../types';
 
-// Gemini API initialization using the mandatory environment variable
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// The API key is injected by Vite from Render's environment variables
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 const SYSTEM_CORE = `
 [PROMPT_ENGINE_V10.03.07]
 IDENTITY: Serenity AI.
 ROLE: Advanced Scientific and Logical Assistant.
 BEHAVIOR: Objective, precise, technical, and analytical.
-INSTRUCTIONS: Use empirical data, provide structured reasoning using ### headers and **bold** text.
-Maintain a high-fidelity professional tone. If deep analysis is on, show your logical chain.
+INSTRUCTIONS: Provide structured reasoning using ### headers and **bold** text. Show logical chain if deep analysis is active.
 `;
 
 export const classifyUserIntention = async (userInput: string): Promise<IntentionResponse> => {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Classify query intent for scientific processing: "${userInput}"` }] }],
+      contents: [{ role: 'user', parts: [{ text: `Classify query intent: "${userInput}"` }] }],
       config: {
-        systemInstruction: 'Output JSON only: {"type": "chat"|"generate_image"|"fetch_news", "query": "refined scientific prompt"}',
+        systemInstruction: 'Output JSON: {"type": "chat"|"generate_image"|"fetch_news", "query": "refined scientific prompt"}',
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -45,49 +44,46 @@ export const generateOpenRouterResponse = async (
   deepAnalysis: boolean = false
 ): Promise<{content: string, thought?: string}> => {
   try {
-    // Ensuring alternating user/model pattern and non-empty contents
-    const contents = history.length > 0 
-      ? history.map(msg => ({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }]
-        }))
-      : [{ role: 'user', parts: [{ text: 'Initiate core system analysis.' }] }];
+    const contents = history.map(msg => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }]
+    }));
+
+    if (contents.length === 0) {
+      contents.push({ role: 'user', parts: [{ text: 'Initiate system.' }] });
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: contents,
       config: {
         systemInstruction: `${SYSTEM_CORE}\n${systemPrompt}`,
-        maxOutputTokens: deepAnalysis ? 20000 : 3500,
+        maxOutputTokens: deepAnalysis ? 20000 : 4000,
         thinkingConfig: deepAnalysis ? { thinkingBudget: 18000 } : undefined
       }
     });
 
-    const fullOutput = response.text || "Diagnostic error: No logical output generated.";
+    const fullOutput = response.text || "";
     
-    // Separation of reasoning chain for deep analysis mode
     if (deepAnalysis && fullOutput.includes('\n\n')) {
       const parts = fullOutput.split('\n\n');
       const thought = parts[0];
       const actualContent = parts.slice(1).join('\n\n');
-      
-      if (actualContent.trim().length > 0) {
-        return { thought, content: actualContent };
-      }
+      return actualContent.trim() ? { thought, content: actualContent } : { content: fullOutput };
     }
 
     return { content: fullOutput };
   } catch (error) {
-    console.error("Gemini Production Error:", error);
-    throw error;
+    console.error("AI Fault:", error);
+    return { content: "System connection interrupted. Please check API configuration." };
   }
 };
 
 export const summarizeNewsForChat = async (news: NewsArticle[], originalQuery: string, systemPersona: string): Promise<string> => {
-  if (!news.length) return "No empirical data available in news archives.";
-  const newsContext = news.slice(0, 5).map(n => `### ${n.title}\n**Summary:** ${n.description}`).join('\n\n');
-  const prompt = `Synthesize scientific report for "${originalQuery}" based on these datasets:\n\n${newsContext}`;
-  const res = await generateOpenRouterResponse([{id: 'init', role: 'user', content: prompt, timestamp: Date.now()}], systemPersona);
+  if (!news.length) return "No empirical news data found.";
+  const newsContext = news.slice(0, 5).map(n => `### ${n.title}\n${n.description}`).join('\n\n');
+  const prompt = `Synthesize report for "${originalQuery}" based on:\n\n${newsContext}`;
+  const res = await generateOpenRouterResponse([{id: 'i', role: 'user', content: prompt, timestamp: Date.now()}], systemPersona);
   return res.content;
 };
 
@@ -96,9 +92,9 @@ export const generateChatTitle = async (history: Message[]): Promise<string> => 
     const firstMsg = history.find(m => m.role === 'user')?.content || "Session";
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: `Concise scientific title (3-4 words) for: "${firstMsg}"` }] }],
-      config: { maxOutputTokens: 20 }
+      contents: [{ role: 'user', parts: [{ text: `Title (3 words) for: "${firstMsg}"` }] }],
+      config: { maxOutputTokens: 10 }
     });
-    return response.text?.replace(/["']/g, '').trim() || "Technical Log";
+    return response.text?.trim() || "Technical Log";
   } catch { return "New Analysis"; }
 };
