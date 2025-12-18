@@ -1,0 +1,8 @@
+{
+  "name": "Serenity AI",
+  "description": "Scientific Intelligence Platform v10.03.07",
+  "version": "10.03.07",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
