@@ -49,7 +49,7 @@ Full support for **KaTeX** mathematical rendering (LaTeX) and syntax-highlighted
 
 ### 1. Installation
 ```bash
-git clone https://github.com/yourusername/serenity-ai.git
+git clone https://github.com/anshuman365/serenity-ai.git
 cd serenity-ai
 npm install
 ```
