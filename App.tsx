@@ -7,7 +7,8 @@ import {
   RefreshCw, ExternalLink, Download, Info, Heart, Globe, Github,
   Zap, Camera, Feather, Smile, Trash2,
   Code, BookOpen, Cpu, Lightbulb, Wand2, Clock,
-  Volume2, VolumeX, Mic, MicOff, Music
+  Volume2, VolumeX, Mic, MicOff, Music, Search, Link as LinkIcon,
+  Globe2
 } from 'lucide-react';
 import { generateOpenRouterResponse, classifyUserIntention, summarizeNewsForChat, generateChatTitle } from './services/openRouterService';
 import { generateImageHF, type ImageGenerationResult } from './services/imageService';
@@ -15,6 +16,7 @@ import { fetchLatestNews, checkAndNotifyNews, formatRelativeTime } from './servi
 import { fetchBackendKeys } from './services/config';
 import { saveImageToDb, getAllImagesFromDb, requestStoragePersistence, getImageBlobById } from './services/storage';
 import { speakText, stopSpeech } from './services/speechService';
+import { searchAndScrape, type ScrapedPage } from './services/webBrowserService';
 import SettingsModal from './components/SettingsModal';
 import ImageDisplay from './components/ImageDisplay';
 import MarkdownRenderer from './components/MarkdownRenderer';
@@ -232,10 +234,14 @@ const App: React.FC = () => {
       let botContent = "";
       let generatedImageId = undefined;
       let newsArticlesForChat: NewsArticle[] = [];
+      let searchSources: { title: string; url: string }[] = [];
       let imageGenerationDetails: { originalPrompt: string; refinedPrompt: string } | null = null;
 
+      const activeChat = chats.find(c => c.id === activeChatId);
+      const history = activeChat ? [...activeChat.messages, userMsg] : [userMsg];
+
       if (intention.type === 'generate_image') {
-        setLoadingAction('Painting your vision...');
+        setLoadingAction('Materializing your vision...');
         const result: ImageGenerationResult = await generateImageHF(intention.query);
         generatedImageId = generateId();
         const newImgItem: ImageHistoryItem = {
@@ -248,17 +254,45 @@ const App: React.FC = () => {
         await saveImageToDb(newImgItem, result.blob);
         setImageHistory(prev => [newImgItem, ...prev]);
         imageGenerationDetails = { originalPrompt: result.originalPrompt, refinedPrompt: result.refinedPrompt };
-        botContent = `I've materialized your imagination. You can find it in your gallery.`;
+        botContent = `Imagination captured. You can explore the full render in your gallery archive.`;
       } else if (intention.type === 'fetch_news') {
-        setLoadingAction('Scanning global updates...');
+        setLoadingAction('Scanning global intel streams...');
         const articles = await fetchLatestNews(intention.query || 'technology', true);
         newsArticlesForChat = articles;
         botContent = await summarizeNewsForChat(articles, userMsg.content, settings.systemPrompt);
+      } else if (intention.type === 'web_search') {
+        setLoadingAction('Initiating manual web search...');
+        const scrapedPages = await searchAndScrape(intention.query, (status) => {
+          setLoadingAction(status);
+        });
+        
+        if (scrapedPages.length === 0) {
+           botContent = "I attempted to search the web for that, but couldn't retrieve valid data. Please try again or rephrase.";
+        } else {
+          const searchContext = scrapedPages.map(page => 
+            `[SOURCE: ${page.title}] URL: ${page.url}\nCONTENT: ${page.content}\n---`
+          ).join('\n');
+
+          const synthesisPrompt = `
+            ${settings.systemPrompt}
+            TASK: The user has requested real-time data: "${userMsg.content}".
+            I have manually crawled the web and extracted the following data:
+            
+            ${searchContext}
+            
+            DIRECTIONS:
+            1. Provide a definitive and professional answer using ONLY the data above.
+            2. Cite sources by mentioning the website names.
+            3. If the data is conflicting, provide a balanced view.
+            4. Keep the tone sophisticated and helpful.
+          `;
+
+          botContent = await generateOpenRouterResponse(history, synthesisPrompt);
+          searchSources = scrapedPages.map(p => ({ title: p.title, url: p.url }));
+        }
       } else {
-        const activeChat = chats.find(c => c.id === activeChatId);
-        const history = activeChat ? [...activeChat.messages, userMsg] : [userMsg];
         const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        const fullPrompt = `Current Date: ${today}\n${settings.systemPrompt}\nUser: ${settings.partnerName}\nAI: ${settings.userName}`;
+        const fullPrompt = `Current Context: ${today}\n${settings.systemPrompt}\nUser: ${settings.partnerName}\nAI: ${settings.userName}`;
         botContent = await generateOpenRouterResponse(history, fullPrompt);
       }
 
@@ -268,13 +302,13 @@ const App: React.FC = () => {
         content: botContent,
         imageId: generatedImageId,
         newsArticles: newsArticlesForChat.length > 0 ? newsArticlesForChat : undefined,
+        groundingSources: searchSources.length > 0 ? searchSources : undefined,
         timestamp: Date.now(),
         metadata: imageGenerationDetails ? { imageGeneration: imageGenerationDetails } : undefined
       };
 
       setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: [...c.messages, botMsg] } : c));
 
-      // Voice output if enabled
       if (isVoiceEnabled) {
         setIsSpeaking(true);
         speakText(botContent).finally(() => setIsSpeaking(false));
@@ -288,6 +322,13 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error(error);
+      const errorMsg: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content: "I've encountered a neural synchronization error. This usually happens due to API rate limits or proxy instability. Let's try again in a moment.",
+        timestamp: Date.now()
+      };
+      setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: [...c.messages, errorMsg] } : c));
     } finally {
       setIsTyping(false);
       setLoadingAction(null);
@@ -393,6 +434,28 @@ const App: React.FC = () => {
                      </div>
                    </div>
                  )}
+
+                 {msg.groundingSources && msg.groundingSources.length > 0 && (
+                   <div className="w-full mt-4 space-y-2">
+                     <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 px-1">
+                        <Globe2 size={12} className="text-blue-500" /> Web Intel Sources
+                     </div>
+                     <div className="flex flex-wrap gap-2">
+                       {msg.groundingSources.map((source, i) => (
+                         <a 
+                           key={i} 
+                           href={source.url} 
+                           target="_blank" 
+                           className="flex items-center gap-2 px-3 py-1.5 glass-morphism rounded-full text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:scale-[1.05] transition-transform border border-blue-100 dark:border-blue-900/30"
+                         >
+                           <LinkIcon size={10} />
+                           <span className="max-w-[120px] truncate">{source.title}</span>
+                         </a>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
                  <div className="flex items-center gap-2">
                     <span className="text-[10px] text-gray-400 font-medium">{new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                     {msg.role === 'assistant' && (
@@ -423,7 +486,7 @@ const App: React.FC = () => {
                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" />
                    </div>
-                   {loadingAction || "Synthesizing Response..."}
+                   {loadingAction || "Neural Processing..."}
                 </div>
              </div>
            )}
@@ -446,7 +509,7 @@ const App: React.FC = () => {
               ref={textareaRef}
               value={input} 
               onChange={e=>setInput(e.target.value)} 
-              placeholder={`Communicate with ${settings.userName}...`}
+              placeholder={`Neural message for ${settings.userName}...`}
               className="flex-1 bg-transparent border-0 focus:ring-0 px-2 md:px-4 py-3 outline-none dark:text-white resize-none min-h-[48px] max-h-32 text-sm md:text-base font-medium placeholder:text-gray-400"
               rows={1}
             />
@@ -669,13 +732,13 @@ const App: React.FC = () => {
                  </div>
                  <div className="p-5 glass-morphism rounded-3xl text-left">
                    <h4 className="font-black text-[10px] text-slate-400 uppercase tracking-widest mb-2">Intelligence</h4>
-                   <p className="text-sm font-bold dark:text-white">Gemini 2.0</p>
+                   <p className="text-sm font-bold dark:text-white">Gemini 2.5</p>
                    <p className="text-[10px] text-purple-500 font-black mt-1 uppercase">Flash Engine</p>
                  </div>
                </div>
                
                <button className={`w-full py-4 rounded-2xl text-white font-black tracking-[0.2em] shadow-2xl ${theme.buttonGradient} hover:scale-[1.02] transition-transform uppercase text-xs`}>
-                 Documentation & Assets
+                 Project Status: Beta 3.1
                </button>
              </div>
            </div>

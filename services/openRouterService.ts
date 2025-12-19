@@ -1,3 +1,4 @@
+
 import { Message, IntentionResponse, NewsArticle } from '../types';
 import { CONFIG, fetchBackendKeys } from './config';
 
@@ -8,16 +9,12 @@ const getHeaders = () => ({
   "X-Title": "Serenity AI Assistant",
 });
 
-// Professional AI Profile
 const AI_PROFILE = `
 [SYSTEM_DATA: AI_PROFILE]
 Name: Serenity AI
 Identity: Advanced AI Assistant with expertise in technology, science, research, and creative problem-solving.
 Capabilities: Expert in Python, AI/ML concepts, web development (React, TypeScript, Node.js), data analysis, and technical writing.
-Communication Style: Clear, concise, professional. Provides accurate, well-researched information. Maintains helpful and respectful tone.
-Goal: To assist users with information, creative tasks, technical guidance, and intelligent conversation.
 Creator: Anshuman Singh (Physicist & Developer)
-Instruction: Respond in clear, professional English. Be precise, knowledgeable, and helpful.
 `;
 
 export const classifyUserIntention = async (userInput: string): Promise<IntentionResponse> => {
@@ -26,21 +23,19 @@ export const classifyUserIntention = async (userInput: string): Promise<Intentio
   }
 
   if (!CONFIG.OPENROUTER_API) {
-    console.error("OpenRouter Key is missing in config");
     return { type: 'chat', query: userInput }; 
   }
 
   const systemInstruction = `
-    You are an intention classifier. Analyze the input and return a JSON object.
-    
-    Categories:
+    Analyze user input and classify it into one of these categories:
     1. 'generate_image': User wants to create/draw/see an image.
-    2. 'fetch_news': User asks for news, headlines, updates, current events.
-    3. 'chat': Normal conversation, advice, technical questions, or general inquiries.
+    2. 'fetch_news': User asks for general news/headlines/daily updates.
+    3. 'web_search': User asks for SPECIFIC facts, recent events, real-time data, people, or details that require a fresh internet search (e.g., "Who won the game last night?", "Latest Nobel prize winners", "Price of Bitcoin").
+    4. 'chat': General talk, coding, math, greeting, or advice.
 
     Response Format (JSON ONLY):
     {
-      "type": "chat" | "generate_image" | "fetch_news",
+      "type": "chat" | "generate_image" | "fetch_news" | "web_search",
       "query": "refined search query or prompt"
     }
   `;
@@ -60,9 +55,7 @@ export const classifyUserIntention = async (userInput: string): Promise<Intentio
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`OpenRouter Classifier Error: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`OpenRouter Classifier Error: ${response.status}`);
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
@@ -74,7 +67,6 @@ export const classifyUserIntention = async (userInput: string): Promise<Intentio
         return { type: 'chat', query: userInput };
     }
   } catch (error) {
-    console.warn("Classification failed, defaulting to chat", error);
     return { type: 'chat', query: userInput };
   }
 };
@@ -83,30 +75,10 @@ export const generateOpenRouterResponse = async (
   history: Message[],
   systemPrompt: string
 ): Promise<string> => {
-  
-  if (!CONFIG.OPENROUTER_API) {
-    await fetchBackendKeys();
-  }
-  
-  if (!CONFIG.OPENROUTER_API) {
-    throw new Error("API Key missing. Please add it in Settings.");
-  }
+  if (!CONFIG.OPENROUTER_API) await fetchBackendKeys();
+  if (!CONFIG.OPENROUTER_API) throw new Error("API Key missing.");
 
   const MODEL = "google/gemini-2.0-flash-001"; 
-
-  const finalSystemPrompt = `
-    ${systemPrompt}
-    
-    ${AI_PROFILE}
-    
-    GUIDELINES:
-    - Be precise, knowledgeable, and professional
-    - Provide well-structured responses
-    - Admit when you don't know something
-    - Use clear English with appropriate technical depth
-    - Be helpful and respectful
-    - For technical topics, explain concepts clearly
-  `;
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -116,7 +88,7 @@ export const generateOpenRouterResponse = async (
         model: MODEL, 
         max_tokens: 550,
         messages: [
-          { role: "system", content: finalSystemPrompt },
+          { role: "system", content: systemPrompt + "\n" + AI_PROFILE },
           ...history.map(msg => ({
             role: msg.role,
             content: msg.content
@@ -131,7 +103,7 @@ export const generateOpenRouterResponse = async (
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || "I apologize, I didn't understand that. Could you rephrase?";
+    return data.choices?.[0]?.message?.content || "I apologize, I didn't understand that.";
   } catch (error) {
     console.error("OpenRouter Error:", error);
     throw error;
@@ -139,30 +111,16 @@ export const generateOpenRouterResponse = async (
 };
 
 export const summarizeNewsForChat = async (news: NewsArticle[], originalQuery: string, systemPersona: string): Promise<string> => {
-  if (!news.length) return "I couldn't find recent news on that topic. Would you like me to search for something else?";
+  if (!news.length) return "I couldn't find recent news on that topic.";
 
-  const newsContext = news.slice(0, 5).map(n => `
-    Title: ${n.title}
-    Source: ${n.source}
-    Snippet: ${n.description}
-    Date: ${n.publishedAt}
-  `).join('\n---\n');
+  const newsContext = news.slice(0, 5).map(n => `Title: ${n.title}\nSource: ${n.source}\nSnippet: ${n.description}`).join('\n---\n');
   
   const prompt = `
-    Current Date: ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
     ${systemPersona}
-    
-    CONTEXT:
-    The user asked about: "${originalQuery}".
-    I've performed a news search and found these articles:
-    
+    CONTEXT: News search for "${originalQuery}".
+    NEWS:
     ${newsContext}
-
-    TASK:
-    Provide a concise, professional summary of these news articles.
-    Organize information clearly, mention key sources and dates.
-    Maintain a neutral, informative tone.
-    Focus on factual reporting rather than opinion.
+    TASK: Summarize these news articles concisely.
   `;
 
   return generateOpenRouterResponse([], prompt);
@@ -170,17 +128,7 @@ export const summarizeNewsForChat = async (news: NewsArticle[], originalQuery: s
 
 export const generateChatTitle = async (history: Message[]): Promise<string> => {
   if (!CONFIG.OPENROUTER_API) return "";
-
   const contextMessages = history.slice(0, 4).map(m => `${m.role}: ${m.content}`).join('\n');
-  
-  const systemInstruction = `
-    Analyze the conversation snippet and create a short, descriptive title (max 4 words).
-    Make it professional and reflective of the main topic.
-    Examples: "Quantum Physics Discussion", "Image Generation Request", "News Analysis", "Technical Support".
-    Do NOT use quotation marks.
-    Return ONLY the title text.
-  `;
-
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -189,23 +137,15 @@ export const generateChatTitle = async (history: Message[]): Promise<string> => 
         model: "openai/gpt-3.5-turbo", 
         max_tokens: 15,
         messages: [
-          { role: "system", content: systemInstruction },
+          { role: "system", content: "Create a short 3-4 word title for this chat. No quotes." },
           { role: "user", content: contextMessages }
         ]
       })
     });
-
     if (!response.ok) return "";
-    
     const data = await response.json();
-    let title = data.choices?.[0]?.message?.content?.trim();
-    if (title) {
-        title = title.replace(/^["']|["']$/g, '');
-        return title;
-    }
-    return "";
+    return data.choices?.[0]?.message?.content?.trim() || "";
   } catch (error) {
-    console.warn("Title generation failed", error);
     return "";
   }
 };

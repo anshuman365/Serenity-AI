@@ -1,71 +1,80 @@
-# Serenity AI - Personalized Assistant
 
-Serenity AI is a beautiful, personalized web-based AI assistant designed to provide a romantic and helpful companion experience. It features real-time chat, image generation, and news updates in a modern, glassmorphic UI.
+# 🌌 Serenity AI: The Personalized Neural Ecosystem
 
-## Features
+**Serenity AI** is a next-generation, high-performance AI companion and workspace. Built with a focus on aesthetics and multi-modal intelligence, it combines advanced language processing, custom real-time web intelligence, and high-fidelity image generation into a unified, glassmorphic experience.
 
-- **Personalized Chat**: 
-  - Uses **OpenRouter** (GPT-3.5 default) for primary conversation.
-  - Automatic fallback to **Google Gemini 2.5 Flash** if OpenRouter fails.
-  - customizable user and partner names and system personality.
-  - Chat history persistence via LocalStorage.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![React](https://img.shields.io/badge/frontend-React%2019-blue)
+![Intelligence](https://img.shields.io/badge/AI-OpenRouter%20%2B%20Gemini-purple)
 
-- **Image Generation**: 
-  - Integrated **Hugging Face** API using the `FLUX.1-dev` model to generate high-quality images from text prompts.
-  - Generated images can be sent directly into the chat stream.
+## ✨ Core Pillars
 
-- **News Feed**: 
-  - Real-time news updates via **GNews API**.
-  - Displays latest headlines with images and links.
+### 🧠 1. Neural Conversation Engine
+Leverages the **Gemini 2.0 Flash** model (via OpenRouter) for hyper-fast, intelligent, and context-aware responses. The system includes an intention classifier that automatically switches between general chat, image generation, news fetching, and live web research.
 
-- **UI/UX**: 
-  - Fully responsive Mobile-first design.
-  - Aesthetic Glassmorphism effects.
-  - Smooth animations and transitions.
+### 🌐 2. Live Web Intelligence (Autonomous Browser)
+Unlike standard LLMs with training cutoffs, Serenity features a custom-built **Manual Web Scraper**. 
+- **Intention Detection**: Recognizes when a query requires real-time data.
+- **Autonomous Search**: Mimics browser behavior to query search engines.
+- **Deep Reading**: Reaches out to websites using CORS proxies, extracts clean text (stripping ads/scripts), and synthesizes a concluding response from the live data.
 
-## Environment Variables
+### 🎨 3. Imagination Vault (Creative Suite)
+Integrated with **Hugging Face's FLUX.1-dev** model.
+- **Prompt Engineering**: Automatically refines user ideas into professional-grade artistic prompts.
+- **Local Persistence**: Uses IndexedDB for native storage, allowing your "Imagination Vault" to persist across sessions without cloud costs.
 
-To fully utilize all features, you need to configure the following API keys in your environment (e.g., `.env` file):
+### 📰 4. Global Intel Feed
+Synthesizes real-time news from verified global agencies using **GNews** and **Google News RSS**. It provides concise summaries of world events directly in your chat flow.
 
-| Variable Name | Service | Description |
-| :--- | :--- | :--- |
-| `OPENROUTER_API` | OpenRouter | **Required**. Used for the main chat functionality (access to GPT, Claude, Llama, etc.). |
-| `GEMINI_API_KEY` | Google Gemini | **Optional**. Used as a fallback chat engine if OpenRouter is unavailable. |
-| `HUGGINGFACE_API_KEY` | Hugging Face | **Required**. Used for generating images via the FLUX.1-dev model. |
-| `GNEWS_API_KEY` | GNews | **Required**. Used to fetch the latest lifestyle and technology news. |
+### 🧪 5. Advanced Math & Code
+Full support for **KaTeX** mathematical rendering (LaTeX) and syntax-highlighted code blocks with integrated "One-Tap Copy" functionality.
 
-### Example `.env` file
+---
 
-```env
-OPENROUTER_API=sk-or-v1-...
-GEMINI_API_KEY=AIzaSy...
-HUGGINGFACE_API_KEY=hf_...
-GNEWS_API_KEY=...
+## 🛠 Tech Stack
+
+- **Framework**: React 19 + TypeScript
+- **Styling**: Tailwind CSS (Custom Glassmorphism)
+- **Icons**: Lucide React
+- **Mathematics**: KaTeX (Fastest LaTeX engine)
+- **Database**: IndexedDB (Native Browser Storage for Media)
+- **AI Orchestration**: 
+  - **Text**: OpenRouter (Gemini 2.0 Flash / GPT-3.5)
+  - **Images**: Hugging Face (FLUX / Stable Diffusion)
+  - **Search**: Custom Proxy-based Web Scraper
+
+---
+
+## 🚀 Getting Started
+
+### 1. Installation
+```bash
+git clone https://github.com/yourusername/serenity-ai.git
+cd serenity-ai
+npm install
 ```
 
-## Getting Started
+### 2. Configuration
+Create a `.env` file in the root:
+```env
+OPENROUTER_API=your_openrouter_key
+GEMINI_API_KEY=your_gemini_key
+HUGGINGFACE_API_KEY=your_hf_key
+GNEWS_API_KEY=your_gnews_key
+```
 
-1.  **Clone the repository**.
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-3.  **Set up keys**: Create a `.env` file in the root directory and add the keys listed above.
-4.  **Run the app**:
-    ```bash
-    npm start
-    ```
+### 3. Execution
+```bash
+npm run dev
+```
 
-## Customization
+---
 
-Click the **Settings** (gear icon) in the sidebar to change:
-- **Your Name**: The name the AI calls itself.
-- **Partner Name**: The name the AI calls you.
-- **System Personality**: The core instructions for how the AI behaves (e.g., "be romantic," "be professional").
+## 👨‍💻 Author
+**Anshuman Singh**  
+*Physicist & Full-Stack Developer*
 
-## Technologies
+Dedicated to pushing the boundaries of human-AI interaction through beautiful design and robust engineering.
 
-- React 19
-- Tailwind CSS
-- Lucide React (Icons)
-- Google GenAI SDK
+---
+*Developed with ❤️ for the AI community.*

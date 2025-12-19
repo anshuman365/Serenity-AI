@@ -1,3 +1,4 @@
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -5,6 +6,7 @@ export interface Message {
   timestamp: number;
   imageId?: string;
   newsArticles?: NewsArticle[];
+  groundingSources?: { title: string; url: string }[];
   metadata?: {
     imageGeneration?: {
       originalPrompt: string;
@@ -51,7 +53,7 @@ export interface NewsArticle {
 
 export type PageView = 'chat' | 'gallery' | 'news' | 'about';
 
-export type UserIntention = 'chat' | 'generate_image' | 'fetch_news';
+export type UserIntention = 'chat' | 'generate_image' | 'fetch_news' | 'web_search';
 
 export interface IntentionResponse {
   type: UserIntention;
