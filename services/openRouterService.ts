@@ -8,7 +8,7 @@ const getHeaders = () => ({
   "X-Title": "Serenity AI Assistant",
 });
 
-// Updated: Professional AI Profile
+// Professional AI Profile
 const AI_PROFILE = `
 [SYSTEM_DATA: AI_PROFILE]
 Name: Serenity AI
@@ -20,7 +20,6 @@ Creator: Anshuman Singh (Physicist & Developer)
 Instruction: Respond in clear, professional English. Be precise, knowledgeable, and helpful.
 `;
 
-// 1. Classify User Intention (unchanged, but we can keep it)
 export const classifyUserIntention = async (userInput: string): Promise<IntentionResponse> => {
   if (!CONFIG.OPENROUTER_API) {
     await fetchBackendKeys();
@@ -80,7 +79,6 @@ export const classifyUserIntention = async (userInput: string): Promise<Intentio
   }
 };
 
-// 2. Main Chat Generation - Updated for professional AI
 export const generateOpenRouterResponse = async (
   history: Message[],
   systemPrompt: string
@@ -96,7 +94,6 @@ export const generateOpenRouterResponse = async (
 
   const MODEL = "google/gemini-2.0-flash-001"; 
 
-  // Merge User's settings with AI Profile
   const finalSystemPrompt = `
     ${systemPrompt}
     
@@ -141,7 +138,6 @@ export const generateOpenRouterResponse = async (
   }
 };
 
-// 3. Summarize News - Updated for professional tone
 export const summarizeNewsForChat = async (news: NewsArticle[], originalQuery: string, systemPersona: string): Promise<string> => {
   if (!news.length) return "I couldn't find recent news on that topic. Would you like me to search for something else?";
 
@@ -172,7 +168,6 @@ export const summarizeNewsForChat = async (news: NewsArticle[], originalQuery: s
   return generateOpenRouterResponse([], prompt);
 };
 
-// 4. Generate Chat Title (unchanged, but prompt updated)
 export const generateChatTitle = async (history: Message[]): Promise<string> => {
   if (!CONFIG.OPENROUTER_API) return "";
 

@@ -5,31 +5,28 @@ import {
   ChevronLeft, User, Sun, Moon,
   RefreshCw, ExternalLink, Download, Info, Heart, Globe, Github,
   Zap, Camera, Feather, Smile, Trash2,
-  Code, BookOpen, Cpu, Lightbulb // New icons for professional topics
+  Code, BookOpen, Cpu, Lightbulb, Wand2
 } from 'lucide-react';
 import { generateOpenRouterResponse, classifyUserIntention, summarizeNewsForChat, generateChatTitle } from './services/openRouterService';
-import { generateImageHF } from './services/imageService';
+import { generateImageHF, type ImageGenerationResult } from './services/imageService';
 import { fetchLatestNews, checkAndNotifyNews } from './services/newsService';
 import { fetchBackendKeys } from './services/config';
 import { saveImageToDb, getAllImagesFromDb, requestStoragePermission } from './services/storage';
 import SettingsModal from './components/SettingsModal';
 import { ChatSession, Message, AppSettings, PageView, ImageHistoryItem, NewsArticle } from './types';
 
-// Utils
 const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
 
-// UPDATED: Professional AI Assistant Default Settings
 const DEFAULT_SETTINGS: AppSettings = {
-  userName: 'User', // Changed from 'Tera Hero'
-  partnerName: 'Serenity AI', // Changed from 'Meri Jaan'
+  userName: 'User',
+  partnerName: 'Serenity AI',
   systemPrompt: 'You are Serenity AI, a sophisticated AI assistant designed to provide intelligent, accurate, and helpful responses. You are knowledgeable in technology, science, creative arts, and general topics. You communicate in clear, professional English. Your responses should be well-structured, factual when possible, and appropriately detailed based on the query. Admit when you don\'t know something and offer to help with related topics.',
   customMemories: '',
-  themeId: 'ocean', // Changed default theme to more professional ocean
-  fontFamily: 'Inter', // More professional font
+  themeId: 'ocean',
+  fontFamily: 'Inter',
   newsRefreshInterval: 20
 };
 
-// Theme configurations (unchanged but we'll use ocean as default)
 const THEMES = {
   romantic: {
     gradient: 'from-pink-500 to-purple-600',
@@ -80,7 +77,6 @@ const THEMES = {
 
 const App: React.FC = () => {
   const [activePage, setActivePage] = useState<PageView>('chat');
-  
   const [darkMode, setDarkMode] = useState(() => {
     try {
       const saved = localStorage.getItem('serenity_theme_mode');
@@ -101,6 +97,7 @@ const App: React.FC = () => {
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+  
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -114,14 +111,28 @@ const App: React.FC = () => {
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedRefinements, setExpandedRefinements] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const theme = THEMES[settings.themeId] || THEMES.ocean; // Default to ocean
+  const theme = THEMES[settings.themeId] || THEMES.ocean;
 
   useEffect(() => {
-    if (!currentChatId && chats.length > 0) setCurrentChatId(chats[0].id);
-  }, [chats, currentChatId]);
+    const savedChats = localStorage.getItem('serenity_chats');
+    if (savedChats) {
+      try {
+        setChats(JSON.parse(savedChats));
+      } catch { }
+    }
+    
+    const hydrateImages = async () => {
+      const dbImages = await getAllImagesFromDb();
+      setImageHistory(dbImages);
+    };
+    
+    hydrateImages();
+    requestStoragePermission();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('serenity_chats', JSON.stringify(chats));
@@ -131,48 +142,10 @@ const App: React.FC = () => {
     localStorage.setItem('serenity_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // IMAGE HYDRATION
-  useEffect(() => {
-    const hydrateImages = async () => {
-      const dbImages = await getAllImagesFromDb();
-      setImageHistory(dbImages);
-
-      let chatsChanged = false;
-      const updatedChats = chats.map(chat => {
-        let msgsChanged = false;
-        const newMsgs = chat.messages.map(msg => {
-          if (msg.imageId) {
-            const freshImg = dbImages.find(img => img.id === msg.imageId);
-            if (freshImg && freshImg.url !== msg.image) {
-               msgsChanged = true;
-               return { ...msg, image: freshImg.url };
-            }
-          }
-          return msg;
-        });
-
-        if (msgsChanged) {
-          chatsChanged = true;
-          return { ...chat, messages: newMsgs };
-        }
-        return chat;
-      });
-
-      if (chatsChanged) {
-        console.log("Restored images in chat history");
-        setChats(updatedChats);
-      }
-    };
-
-    hydrateImages();
-    requestStoragePermission();
-  }, []);
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chats, currentChatId, isTyping, activePage]);
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -180,7 +153,6 @@ const App: React.FC = () => {
     }
   }, [input]);
 
-  // Dark Mode Logic
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -215,10 +187,12 @@ const App: React.FC = () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    
     setChats([newChat, ...chats]);
     setCurrentChatId(newChat.id);
     setActivePage('chat');
     setIsSidebarOpen(false);
+    setInput('');
   };
 
   const handleDeleteChat = (e: React.MouseEvent, chatIdToDelete: string) => {
@@ -244,21 +218,20 @@ const App: React.FC = () => {
     
     let activeChatId = currentChatId;
     let activeChats = [...chats];
+    
     if (!activeChatId) {
-      const newChat = {
-        id: generateId(),
-        title: textToSend.slice(0, 30) + '...',
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      activeChats = [newChat, ...chats];
-      activeChatId = newChat.id;
-      setChats(activeChats);
-      setCurrentChatId(activeChatId);
+      handleCreateNewChat();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      activeChatId = currentChatId;
+      activeChats = chats;
     }
 
-    const userMsg: Message = { id: generateId(), role: 'user', content: textToSend, timestamp: Date.now() };
+    const userMsg: Message = { 
+      id: generateId(), 
+      role: 'user', 
+      content: textToSend, 
+      timestamp: Date.now() 
+    };
     
     setChats(prev => prev.map(c => c.id === activeChatId ? {
       ...c, messages: [...c.messages, userMsg], updatedAt: Date.now()
@@ -276,24 +249,33 @@ const App: React.FC = () => {
       let generatedImageUrl = undefined;
       let generatedImageId = undefined;
       let newsArticlesForChat: NewsArticle[] = [];
+      let imageGenerationDetails: { originalPrompt: string; refinedPrompt: string } | null = null;
 
       if (intention.type === 'generate_image') {
-        setLoadingAction('Generating Image...');
-        const blob = await generateImageHF(intention.query);
-        generatedImageUrl = URL.createObjectURL(blob);
+        setLoadingAction('Refining Prompt & Generating Image...');
+        
+        const result: ImageGenerationResult = await generateImageHF(intention.query);
+        generatedImageUrl = URL.createObjectURL(result.blob);
         generatedImageId = generateId();
         
         const newImgItem: ImageHistoryItem = {
-           id: generatedImageId,
-           url: generatedImageUrl,
-           prompt: intention.query,
-           createdAt: Date.now()
+          id: generatedImageId,
+          url: generatedImageUrl,
+          prompt: result.originalPrompt,
+          refinedPrompt: result.refinedPrompt,
+          createdAt: Date.now()
         };
         
-        await saveImageToDb(newImgItem, blob);
+        await saveImageToDb(newImgItem, result.blob);
         
         setImageHistory(prev => [newImgItem, ...prev]);
-        botContent = "I've generated an image based on your description. Here it is:";
+        
+        imageGenerationDetails = {
+          originalPrompt: result.originalPrompt,
+          refinedPrompt: result.refinedPrompt
+        };
+        
+        botContent = `I've enhanced your prompt and generated this image using ${result.source}.`;
         
       } else if (intention.type === 'fetch_news') {
         setLoadingAction('Fetching News...');
@@ -325,7 +307,10 @@ const App: React.FC = () => {
         image: generatedImageUrl,
         imageId: generatedImageId,
         newsArticles: newsArticlesForChat.length > 0 ? newsArticlesForChat : undefined,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        metadata: imageGenerationDetails ? {
+          imageGeneration: imageGenerationDetails
+        } : undefined
       };
 
       setChats(prev => prev.map(c => c.id === activeChatId ? {
@@ -353,7 +338,7 @@ const App: React.FC = () => {
         role: 'system', 
         content: isKeyError 
           ? "I apologize, but I'm having trouble connecting to the AI service. Please check your API key in Settings." 
-          : "I encountered a network issue. Please try again.", 
+          : error.message || "I encountered a network issue. Please try again.", 
         timestamp: Date.now() 
       };
       setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: [...c.messages, errM] } : c));
@@ -370,7 +355,6 @@ const App: React.FC = () => {
   const renderChat = () => {
     const activeChat = chats.find(c => c.id === currentChatId);
     
-    // UPDATED: Professional suggestion chips
     const suggestions = [
       { icon: Cpu, text: "Explain quantum computing basics" },
       { icon: Code, text: "Write a Python function to sort data" },
@@ -381,7 +365,7 @@ const App: React.FC = () => {
     return (
       <div className="flex-1 flex flex-col h-full overflow-hidden safe-pb">
         <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-           {!activeChat && (
+           {(!activeChat || !currentChatId) && (
              <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-fade-in-up">
                <div className={`w-28 h-28 bg-gradient-to-tr ${theme.gradient} rounded-full flex items-center justify-center mb-6 shadow-2xl ring-4 ring-white dark:ring-gray-800`}>
                  <Bot size={56} className="text-white drop-shadow-md" />
@@ -393,7 +377,14 @@ const App: React.FC = () => {
                  {suggestions.map((s, idx) => (
                    <button 
                      key={idx}
-                     onClick={() => handleSendMessage(s.text)}
+                     onClick={() => {
+                       if (!currentChatId) {
+                         handleCreateNewChat();
+                         setTimeout(() => handleSendMessage(s.text), 100);
+                       } else {
+                         handleSendMessage(s.text);
+                       }
+                     }}
                      className="flex items-center gap-3 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all text-left group"
                    >
                      <div className={`p-2 rounded-lg bg-gray-50 dark:bg-gray-700 ${theme.primary} group-hover:scale-110 transition-transform`}>
@@ -405,59 +396,110 @@ const App: React.FC = () => {
                </div>
              </div>
            )}
-           {activeChat?.messages.map(msg => (
-             <div key={msg.id} className={`flex gap-3 md:gap-4 max-w-3xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-               <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-600 text-white' : `${theme.msgUser} text-white`}`}>
-                 {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
-               </div>
-               <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                 <div className={`px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-sm text-sm whitespace-pre-wrap leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-700 text-white rounded-tr-sm' : `${theme.msgBot} border text-gray-700 dark:text-gray-200 rounded-tl-sm`}`}>
-                   {msg.content}
+           
+           {activeChat?.messages.map(msg => {
+             const imgItem = msg.imageId ? imageHistory.find(img => img.id === msg.imageId) : null;
+             
+             return (
+               <div key={msg.id} className={`flex gap-3 md:gap-4 max-w-3xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                 <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-600 text-white' : `${theme.msgUser} text-white`}`}>
+                   {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                  </div>
-                 
-                 {msg.image && (
-                   <div className="relative group">
-                     <img src={msg.image} alt="Generated" className="rounded-xl shadow-lg border-4 border-white dark:border-gray-700 max-w-full bg-gray-200 dark:bg-gray-800 min-h-[200px]" />
-                     <a 
-                       href={msg.image} 
-                       download={`serenity-${Date.now()}.png`}
-                       className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-full shadow-md text-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
-                     >
-                       <Download size={16}/>
-                     </a>
+                 <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                   <div className={`px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-sm text-sm whitespace-pre-wrap leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-700 text-white rounded-tr-sm' : `${theme.msgBot} border text-gray-700 dark:text-gray-200 rounded-tl-sm`}`}>
+                     {msg.content}
                    </div>
-                 )}
-
-                 {msg.newsArticles && msg.newsArticles.length > 0 && (
-                   <div className="w-full flex gap-3 overflow-x-auto py-2 custom-scrollbar snap-x">
-                     {msg.newsArticles.map((article, idx) => (
+                   
+                   {msg.image && (
+                     <div className="relative group">
+                       <img src={msg.image} alt="Generated" className="rounded-xl shadow-lg border-4 border-white dark:border-gray-700 max-w-full bg-gray-200 dark:bg-gray-800 min-h-[200px]" />
                        <a 
-                         key={idx} 
-                         href={article.url} 
-                         target="_blank" 
-                         rel="noreferrer"
-                         className="flex-shrink-0 w-60 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-all group snap-start"
+                         href={msg.image} 
+                         download={`serenity-${Date.now()}.png`}
+                         className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-full shadow-md text-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
                        >
-                         <div className="h-32 overflow-hidden relative">
-                           <img src={article.image} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                           <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                         </div>
-                         <div className="p-3">
-                           <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-2 mb-1">{article.title}</h4>
-                           <div className="flex items-center justify-between text-[10px] text-gray-500">
-                             <span>{article.source}</span>
-                             <ExternalLink size={10} />
-                           </div>
-                         </div>
+                         <Download size={16}/>
                        </a>
-                     ))}
-                   </div>
-                 )}
+                       
+                       {imgItem?.refinedPrompt && imgItem.refinedPrompt !== imgItem.prompt && (
+                         <div className="mt-2">
+                           <button
+                             onClick={() => {
+                               const newExpanded = new Set(expandedRefinements);
+                               if (newExpanded.has(msg.imageId!)) {
+                                 newExpanded.delete(msg.imageId!);
+                               } else {
+                                 newExpanded.add(msg.imageId!);
+                               }
+                               setExpandedRefinements(newExpanded);
+                             }}
+                             className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 transition-colors"
+                           >
+                             <Wand2 size={12} />
+                             <span>View Enhanced Prompt</span>
+                           </button>
+                           
+                           {expandedRefinements.has(msg.imageId!) && (
+                             <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                               <div className="mb-2">
+                                 <div className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">Your Original Prompt</div>
+                                 <div className="text-gray-600 dark:text-gray-300 text-sm">
+                                   {imgItem.prompt}
+                                 </div>
+                               </div>
+                               
+                               <div className="mb-2">
+                                 <div className="text-blue-500 text-[10px] uppercase tracking-wider mb-1 font-medium">AI-Enhanced Version</div>
+                                 <div className="text-gray-800 dark:text-gray-100 text-sm font-medium">
+                                   {imgItem.refinedPrompt}
+                                 </div>
+                               </div>
+                               
+                               <div className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+                                 <Sparkles size={10} />
+                                 Enhanced with AI for better image quality
+                               </div>
+                             </div>
+                           )}
+                         </div>
+                       )}
+                     </div>
+                   )}
 
-                 <span className="text-[10px] text-gray-400 select-none">{new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                   {msg.newsArticles && msg.newsArticles.length > 0 && (
+                     <div className="w-full overflow-hidden">
+                       <div className="flex gap-3 overflow-x-auto pb-2 pt-1 custom-scrollbar snap-x -mx-1 px-1">
+                         {msg.newsArticles.map((article, idx) => (
+                           <a 
+                             key={idx} 
+                             href={article.url} 
+                             target="_blank" 
+                             rel="noreferrer"
+                             className="flex-shrink-0 w-[85vw] max-w-[280px] bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-all group snap-start"
+                           >
+                             <div className="h-32 overflow-hidden relative">
+                               <img src={article.image} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                             </div>
+                             <div className="p-3">
+                               <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-2 mb-1 leading-tight">{article.title}</h4>
+                               <div className="flex items-center justify-between text-[10px] text-gray-500">
+                                 <span className="truncate max-w-[70%]">{article.source}</span>
+                                 <ExternalLink size={10} />
+                               </div>
+                             </div>
+                           </a>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+
+                   <span className="text-[10px] text-gray-400 select-none">{new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                 </div>
                </div>
-             </div>
-           ))}
+             );
+           })}
+           
            {isTyping && (
              <div className="flex gap-4 max-w-3xl mx-auto items-center animate-in fade-in duration-300">
                 <div className={`w-8 h-8 rounded-full ${theme.msgUser} flex items-center justify-center text-white animate-pulse`}>
@@ -478,6 +520,7 @@ const App: React.FC = () => {
            )}
            <div ref={messagesEndRef} className="h-2"/>
         </div>
+        
         <div className="p-3 md:p-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 pb-safe">
           <div className="max-w-3xl mx-auto flex items-end gap-2">
             <textarea 
@@ -488,7 +531,11 @@ const App: React.FC = () => {
               className="flex-1 bg-white dark:bg-gray-800 border-0 ring-1 ring-gray-200 dark:ring-gray-700 focus:ring-2 focus:ring-blue-400 rounded-2xl px-5 py-3 shadow-sm transition-all outline-none dark:text-white resize-none min-h-[48px] max-h-32 custom-scrollbar text-base"
               rows={1}
             />
-            <button onClick={() => handleSendMessage()} disabled={!input.trim() || isTyping} className={`p-3 md:p-3.5 rounded-xl shadow-lg transition-all transform hover:scale-105 active:scale-95 mb-1 ${!input.trim() ? 'bg-gray-200 dark:bg-gray-700 text-gray-400' : `${theme.buttonGradient} text-white`}`}>
+            <button 
+              onClick={() => handleSendMessage()} 
+              disabled={!input.trim() || isTyping} 
+              className={`p-3 md:p-3.5 rounded-xl shadow-lg transition-all transform hover:scale-105 active:scale-95 mb-1 ${!input.trim() || isTyping ? 'bg-gray-200 dark:bg-gray-700 text-gray-400' : `${theme.buttonGradient} text-white`}`}
+            >
               <Send size={20}/>
             </button>
           </div>
@@ -513,7 +560,13 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="p-3">
-                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{img.prompt}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-1">{img.prompt}</p>
+                {img.refinedPrompt && img.refinedPrompt !== img.prompt && (
+                  <div className="flex items-center gap-1 text-[10px] text-blue-500 mt-1">
+                    <Wand2 size={10} />
+                    <span>AI-enhanced prompt</span>
+                  </div>
+                )}
                 <p className="text-xs text-gray-400 mt-1">{new Date(img.createdAt).toLocaleDateString()}</p>
               </div>
             </div>
@@ -594,7 +647,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-100 transition-colors duration-300" style={{fontFamily: settings.fontFamily}}>
-      {/* Sidebar */}
       <aside className={`fixed md:static inset-y-0 z-30 w-72 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="flex flex-col h-full p-4 safe-pb">
           <div className="flex items-center justify-between mb-8 px-2 mt-2">
@@ -649,7 +701,6 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col h-full relative">
          <header className="h-16 flex items-center justify-between px-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 sticky top-0 z-20">
             <div className="flex items-center gap-3">

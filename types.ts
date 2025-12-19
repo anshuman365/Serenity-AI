@@ -6,6 +6,12 @@ export interface Message {
   image?: string;
   imageId?: string;
   newsArticles?: NewsArticle[];
+  metadata?: {
+    imageGeneration?: {
+      originalPrompt: string;
+      refinedPrompt: string;
+    };
+  };
 }
 
 export interface ChatSession {
@@ -20,14 +26,15 @@ export interface ImageHistoryItem {
   id: string;
   url: string;
   prompt: string;
+  refinedPrompt?: string;
   createdAt: number;
 }
 
 export interface AppSettings {
-  userName: string;           // AI Assistant Name
-  partnerName: string;        // User Name
-  systemPrompt: string;       // AI Personality/Instructions
-  customMemories: string;     // User preferences/context
+  userName: string;
+  partnerName: string;
+  systemPrompt: string;
+  customMemories: string;
   themeId: 'romantic' | 'ocean' | 'nature' | 'sunset' | 'midnight';
   fontFamily: 'Quicksand' | 'Inter' | 'Playfair Display' | 'Fira Code';
   newsRefreshInterval: number;

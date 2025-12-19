@@ -2,9 +2,8 @@ import { ImageHistoryItem } from '../types';
 
 const DB_NAME = 'SerenityDB';
 const STORE_NAME = 'images';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Increased version for new field
 
-// Initialize Database
 const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -13,6 +12,8 @@ const initDB = (): Promise<IDBDatabase> => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      } else {
+        // For existing stores, we don't need to do anything as IndexedDB handles adding new fields
       }
     };
 
@@ -21,7 +22,6 @@ const initDB = (): Promise<IDBDatabase> => {
   });
 };
 
-// Save Image Blob to DB
 export const saveImageToDb = async (item: ImageHistoryItem, blob: Blob) => {
   try {
     const db = await initDB();
@@ -29,12 +29,10 @@ export const saveImageToDb = async (item: ImageHistoryItem, blob: Blob) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       
-      // We store the raw blob along with metadata
-      // Note: We do NOT store the 'url' (blob:...) because it expires.
-      // We regenerate it when loading.
       const record = { 
         id: item.id,
         prompt: item.prompt,
+        refinedPrompt: item.refinedPrompt || item.prompt,
         createdAt: item.createdAt,
         blob: blob 
       }; 
@@ -48,7 +46,6 @@ export const saveImageToDb = async (item: ImageHistoryItem, blob: Blob) => {
   }
 };
 
-// Load All Images from DB
 export const getAllImagesFromDb = async (): Promise<ImageHistoryItem[]> => {
   try {
     const db = await initDB();
@@ -59,15 +56,14 @@ export const getAllImagesFromDb = async (): Promise<ImageHistoryItem[]> => {
 
       request.onsuccess = () => {
         const records = request.result;
-        // Convert stored Blobs back to URLs
         const items: ImageHistoryItem[] = records.map((rec: any) => ({
           id: rec.id,
           prompt: rec.prompt,
+          refinedPrompt: rec.refinedPrompt || rec.prompt,
           createdAt: rec.createdAt,
-          url: URL.createObjectURL(rec.blob) // Create fresh URL for this session
+          url: URL.createObjectURL(rec.blob)
         }));
         
-        // Sort by newest first
         items.sort((a, b) => b.createdAt - a.createdAt);
         resolve(items);
       };
@@ -79,7 +75,6 @@ export const getAllImagesFromDb = async (): Promise<ImageHistoryItem[]> => {
   }
 };
 
-// Request Persistent Storage
 export const requestStoragePermission = async () => {
   if (navigator.storage && navigator.storage.persist) {
     const isPersisted = await navigator.storage.persisted();
