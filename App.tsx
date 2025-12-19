@@ -6,13 +6,15 @@ import {
   ChevronLeft, User, Sun, Moon,
   RefreshCw, ExternalLink, Download, Info, Heart, Globe, Github,
   Zap, Camera, Feather, Smile, Trash2,
-  Code, BookOpen, Cpu, Lightbulb, Wand2, Clock
+  Code, BookOpen, Cpu, Lightbulb, Wand2, Clock,
+  Volume2, VolumeX, Mic, MicOff, Music
 } from 'lucide-react';
 import { generateOpenRouterResponse, classifyUserIntention, summarizeNewsForChat, generateChatTitle } from './services/openRouterService';
 import { generateImageHF, type ImageGenerationResult } from './services/imageService';
 import { fetchLatestNews, checkAndNotifyNews, formatRelativeTime } from './services/newsService';
 import { fetchBackendKeys } from './services/config';
 import { saveImageToDb, getAllImagesFromDb, requestStoragePersistence, getImageBlobById } from './services/storage';
+import { speakText, stopSpeech } from './services/speechService';
 import SettingsModal from './components/SettingsModal';
 import ImageDisplay from './components/ImageDisplay';
 import MarkdownRenderer from './components/MarkdownRenderer';
@@ -115,6 +117,8 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isNewsLoading, setIsNewsLoading] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -128,8 +132,6 @@ const App: React.FC = () => {
         setImageHistory(dbImages);
         const savedChats = localStorage.getItem('serenity_chats');
         if (savedChats) setChats(JSON.parse(savedChats));
-        
-        // Initial news fetch
         refreshNewsData();
       } catch (error) {
         console.error("Error initializing app storage:", error);
@@ -272,6 +274,12 @@ const App: React.FC = () => {
 
       setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: [...c.messages, botMsg] } : c));
 
+      // Voice output if enabled
+      if (isVoiceEnabled) {
+        setIsSpeaking(true);
+        speakText(botContent).finally(() => setIsSpeaking(false));
+      }
+
       const currentChat = chats.find(c => c.id === activeChatId);
       if (currentChat && currentChat.messages.length <= 2) {
         generateChatTitle([...currentChat.messages, userMsg, botMsg]).then(newTitle => {
@@ -293,8 +301,13 @@ const App: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:px-6 space-y-8 custom-scrollbar pt-8">
            {(!activeChat || !currentChatId) && (
              <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-fade-in-up">
-               <div className={`w-28 h-28 bg-gradient-to-tr ${theme.gradient} rounded-3xl flex items-center justify-center mb-8 shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500`}>
-                 <Bot size={56} className="text-white" />
+               <div className={`w-28 h-28 bg-gradient-to-tr ${theme.gradient} rounded-3xl flex items-center justify-center mb-8 shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500 relative group`}>
+                 <Bot size={56} className="text-white group-hover:scale-110 transition-transform" />
+                 {isSpeaking && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                       <div className="w-full h-full border-4 border-white rounded-3xl animate-ping opacity-20" />
+                    </div>
+                 )}
                </div>
                <h3 className="text-3xl font-bold dark:text-gray-100 mb-3 tracking-tight">How can I assist you, {settings.userName}?</h3>
                <p className="text-gray-500 dark:text-gray-400 mb-10 max-w-sm mx-auto text-sm leading-relaxed">
@@ -354,10 +367,10 @@ const App: React.FC = () => {
                  )}
 
                  {msg.newsArticles && msg.newsArticles.length > 0 && (
-                   <div className="w-full mt-3">
-                     <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x">
+                   <div className="w-full mt-3 overflow-hidden">
+                     <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x max-w-full">
                        {msg.newsArticles.map((article, i) => (
-                         <a key={i} href={article.url} target="_blank" className="flex-shrink-0 w-80 glass-morphism rounded-3xl overflow-hidden hover:scale-[1.02] transition-transform snap-start group border border-white/5 shadow-xl">
+                         <a key={i} href={article.url} target="_blank" className="flex-shrink-0 w-[75vw] sm:w-80 glass-morphism rounded-3xl overflow-hidden hover:scale-[1.02] transition-transform snap-start group border border-white/5 shadow-xl">
                             <div className="h-36 overflow-hidden relative">
                               <img src={article.image} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
@@ -380,7 +393,21 @@ const App: React.FC = () => {
                      </div>
                    </div>
                  )}
-                 <span className="text-[10px] text-gray-400 font-medium">{new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                 <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-400 font-medium">{new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    {msg.role === 'assistant' && (
+                       <button 
+                        onClick={() => {
+                          setIsSpeaking(true);
+                          speakText(msg.content).finally(() => setIsSpeaking(false));
+                        }} 
+                        className="text-gray-400 hover:text-blue-500 p-1 rounded-lg transition-colors"
+                        title="Read Aloud"
+                       >
+                         <Volume2 size={12}/>
+                       </button>
+                    )}
+                 </div>
                </div>
              </div>
            ))}
@@ -404,20 +431,30 @@ const App: React.FC = () => {
         </div>
         
         <div className="p-4 md:p-6 bg-white/40 dark:bg-slate-950/40 backdrop-blur-3xl border-t border-white/5 pb-safe">
-          <div className="max-w-4xl mx-auto flex items-end gap-3 glass-morphism p-2 rounded-3xl inner-glow">
+          <div className="max-w-4xl mx-auto flex items-end gap-2 md:gap-3 glass-morphism p-1.5 md:p-2 rounded-3xl inner-glow">
+            <button 
+              onClick={() => {
+                if(isSpeaking) stopSpeech();
+                setIsVoiceEnabled(!isVoiceEnabled);
+              }}
+              className={`p-3 rounded-2xl transition-all ${isVoiceEnabled ? 'bg-blue-500/10 text-blue-500' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              title={isVoiceEnabled ? "Voice Enabled" : "Voice Disabled"}
+            >
+              {isVoiceEnabled ? <Volume2 size={20}/> : <VolumeX size={20}/>}
+            </button>
             <textarea 
               ref={textareaRef}
               value={input} 
               onChange={e=>setInput(e.target.value)} 
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
               placeholder={`Communicate with ${settings.partnerName}...`}
-              className="flex-1 bg-transparent border-0 focus:ring-0 px-4 py-3 outline-none dark:text-white resize-none min-h-[48px] max-h-32 text-base font-medium placeholder:text-gray-400"
+              className="flex-1 bg-transparent border-0 focus:ring-0 px-2 md:px-4 py-3 outline-none dark:text-white resize-none min-h-[48px] max-h-32 text-sm md:text-base font-medium placeholder:text-gray-400"
               rows={1}
             />
             <button 
               onClick={() => handleSendMessage()} 
               disabled={!input.trim() || isTyping} 
-              className={`p-3.5 rounded-2xl shadow-xl transition-all transform hover:scale-105 active:scale-95 mb-0.5 ${!input.trim() || isTyping ? 'bg-slate-200 dark:bg-slate-800 text-slate-400' : `${theme.buttonGradient} text-white`}`}
+              className={`p-3 md:p-3.5 rounded-2xl shadow-xl transition-all transform hover:scale-105 active:scale-95 mb-0.5 ${!input.trim() || isTyping ? 'bg-slate-200 dark:bg-slate-800 text-slate-400' : `${theme.buttonGradient} text-white`}`}
             >
               <Send size={20}/>
             </button>
@@ -478,7 +515,10 @@ const App: React.FC = () => {
 
           <div className="pt-6 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-2xl ${theme.buttonGradient} flex items-center justify-center text-white font-black text-xs shadow-lg`}>AI</div>
+                <div className={`w-10 h-10 rounded-2xl ${theme.buttonGradient} flex items-center justify-center text-white font-black text-xs shadow-lg relative`}>
+                   AI
+                   {isSpeaking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse" />}
+                </div>
                 <div>
                   <div className="text-xs font-black tracking-tight">{settings.partnerName}</div>
                   <div className="text-[9px] font-bold text-green-500 uppercase tracking-widest">Connected</div>
@@ -496,6 +536,7 @@ const App: React.FC = () => {
                <h2 className="font-black text-slate-900 dark:text-white uppercase text-[10px] tracking-[0.3em]">{activePage} Mode</h2>
             </div>
             <div className="flex items-center gap-2">
+              {isSpeaking && <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 glass-morphism rounded-xl text-[9px] font-black text-blue-500 uppercase tracking-widest mr-2 animate-pulse"><Volume2 size={12}/> Serenity Speaking...</div>}
               <button onClick={()=>setDarkMode(!darkMode)} className="p-2.5 text-slate-500 hover:text-blue-500 glass-morphism rounded-2xl transition-all">
                 {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
               </button>
@@ -574,9 +615,9 @@ const App: React.FC = () => {
                 </div>
 
                 {isNewsLoading && cachedNews.length === 0 ? (
-                  <div className="grid gap-8">
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="h-64 glass-morphism rounded-3xl animate-pulse" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                      <div key={i} className="h-80 glass-morphism rounded-3xl animate-pulse" />
                     ))}
                   </div>
                 ) : (
