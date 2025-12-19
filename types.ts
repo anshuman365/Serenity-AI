@@ -1,14 +1,11 @@
-
-
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
-  image?: string; 
-  imageId?: string; 
+  image?: string;
+  imageId?: string;
   newsArticles?: NewsArticle[];
-  thoughtProcess?: string; // New: For logical reasoning steps
 }
 
 export interface ChatSession {
@@ -21,21 +18,20 @@ export interface ChatSession {
 
 export interface ImageHistoryItem {
   id: string;
-  url: string; 
+  url: string;
   prompt: string;
   createdAt: number;
 }
 
 export interface AppSettings {
-  userName: string;
-  partnerName: string;
-  systemPrompt: string;
-  customMemories: string;
+  userName: string;           // AI Assistant Name
+  partnerName: string;        // User Name
+  systemPrompt: string;       // AI Personality/Instructions
+  customMemories: string;     // User preferences/context
   themeId: 'romantic' | 'ocean' | 'nature' | 'sunset' | 'midnight';
   fontFamily: 'Quicksand' | 'Inter' | 'Playfair Display' | 'Fira Code';
-  newsRefreshInterval: number; 
-  deepAnalysisMode: boolean; // New interactive scientific toggle
-  keyOpenRouter?: string; // Added to resolve TypeScript index error in services/config.ts
+  newsRefreshInterval: number;
+  keyOpenRouter?: string;
 }
 
 export interface NewsArticle {
@@ -45,7 +41,6 @@ export interface NewsArticle {
   image: string;
   source: string;
   publishedAt: string;
-  id?: string;
 }
 
 export type PageView = 'chat' | 'gallery' | 'news' | 'about';

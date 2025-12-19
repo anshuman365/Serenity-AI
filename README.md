@@ -1,71 +1,71 @@
+# Serenity AI - Personalized Assistant
 
-# Serenity AI: Advanced Scientific Intelligence Hub
+Serenity AI is a beautiful, personalized web-based AI assistant designed to provide a romantic and helpful companion experience. It features real-time chat, image generation, and news updates in a modern, glassmorphic UI.
 
-Serenity AI is a high-performance, browser-native personal AI application designed for technical analysis, scientific synthesis, and logical reasoning. Built as a "no-backend" solution, it leverages the cutting-edge **Gemini 3** series models to provide a desktop-class intelligence experience directly in the browser.
+## Features
 
-## 🚀 Vision
-To provide an objective, data-driven companion that prioritizes empirical accuracy and structured logical output over casual conversation. Serenity AI is styled as a production-grade scientific interface.
+- **Personalized Chat**: 
+  - Uses **OpenRouter** (GPT-3.5 default) for primary conversation.
+  - Automatic fallback to **Google Gemini 2.5 Flash** if OpenRouter fails.
+  - customizable user and partner names and system personality.
+  - Chat history persistence via LocalStorage.
 
-## ✨ Core Features
+- **Image Generation**: 
+  - Integrated **Hugging Face** API using the `FLUX.1-dev` model to generate high-quality images from text prompts.
+  - Generated images can be sent directly into the chat stream.
 
-### 🧠 Advanced Logical Processing
-- **Deep Analysis Mode**: Utilizes `gemini-3-pro-preview` with an allocated `thinkingBudget` to expose the AI's "Thought Process" or logic chain before providing a final conclusion.
-- **Intent Classification**: Every user query is pre-processed by `gemini-3-flash-preview` to determine if the user needs a logical chat, a scientific visualization (image generation), or real-time empirical data (news).
-- **Session Persistence**: Complete chat histories are preserved across refreshes using localized storage logic.
+- **News Feed**: 
+  - Real-time news updates via **GNews API**.
+  - Displays latest headlines with images and links.
 
-### 🖼️ Scientific Visualizations
-- **On-Demand Rendering**: Integrated image generation using the `gemini-2.5-flash-image` model.
-- **Visualization Vault**: All generated images are archived in a persistent **IndexedDB** gallery, allowing users to revisit technical diagrams and AI-generated visuals at any time.
+- **UI/UX**: 
+  - Fully responsive Mobile-first design.
+  - Aesthetic Glassmorphism effects.
+  - Smooth animations and transitions.
 
-### 📰 Empirical Data Archives (News)
-- **Real-time Synthesis**: Fetches the latest scientific and technical news via Google News RSS.
-- **Contextual Summarization**: Instead of just listing links, the AI analyzes the news articles to provide a summarized technical brief relevant to the user's specific query.
-- **Archival Storage**: Articles are stored in a local database to build a personal knowledge base over time.
+## Environment Variables
 
-### 🎨 Production-Grade UI/UX
-- **Scientific Aesthetic**: A refined, midnight-themed interface using glassmorphism and monospace typography.
-- **Markdown-Lite Engine**: Custom parsing for structured headers (`###`), bold emphasis (`**`), and bulleted lists to ensure technical clarity.
-- **Responsive Architecture**: Mobile-optimized with safe-area support, ensuring a premium experience on both desktop and handheld devices.
+To fully utilize all features, you need to configure the following API keys in your environment (e.g., `.env` file):
 
-## 🛠️ Technical Architecture
+| Variable Name | Service | Description |
+| :--- | :--- | :--- |
+| `OPENROUTER_API` | OpenRouter | **Required**. Used for the main chat functionality (access to GPT, Claude, Llama, etc.). |
+| `GEMINI_API_KEY` | Google Gemini | **Optional**. Used as a fallback chat engine if OpenRouter is unavailable. |
+| `HUGGINGFACE_API_KEY` | Hugging Face | **Required**. Used for generating images via the FLUX.1-dev model. |
+| `GNEWS_API_KEY` | GNews | **Required**. Used to fetch the latest lifestyle and technology news. |
 
-### ⚛️ Frontend Stack
-- **Framework**: React 19 (Latest ESM builds).
-- **Styling**: Tailwind CSS with custom glassmorphic utility classes.
-- **Icons**: Lucide React for consistent, minimal iconography.
-- **State Management**: React Hooks (useState, useEffect, useRef) for reactive UI updates.
+### Example `.env` file
 
-### 🤖 AI Core (Google GenAI SDK)
-- **Primary Model**: `gemini-3-pro-preview` for complex reasoning.
-- **Secondary Model**: `gemini-3-flash-preview` for low-latency classification and metadata generation.
-- **Imaging**: `gemini-2.5-flash-image` for native image synthesis.
-- **Protocol**: Exclusively utilizes `process.env.API_KEY` for secure, direct-to-model communication.
+```env
+OPENROUTER_API=sk-or-v1-...
+GEMINI_API_KEY=AIzaSy...
+HUGGINGFACE_API_KEY=hf_...
+GNEWS_API_KEY=...
+```
 
-### 💾 Data & Persistence
-- **IndexedDB**: Used for heavy data like images and news article archives, ensuring the app remains functional and fast as the data grows.
-- **LocalStorage**: Used for lightweight app configuration, theme toggles, and chat session metadata.
-- **PWA Ready**: Includes a service worker (`sw.js`) and a web manifest (`manifest.json`) for offline capability and "Add to Home Screen" support.
+## Getting Started
 
-## ⚙️ Configuration & Environment
+1.  **Clone the repository**.
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+3.  **Set up keys**: Create a `.env` file in the root directory and add the keys listed above.
+4.  **Run the app**:
+    ```bash
+    npm start
+    ```
 
-The application requires a valid **Google Gemini API Key** provided via the environment.
+## Customization
 
-### Environment Variables
-| Variable | Description |
-| :--- | :--- |
-| `API_KEY` | **Required**. Your Google AI Studio API key for Gemini access. |
+Click the **Settings** (gear icon) in the sidebar to change:
+- **Your Name**: The name the AI calls itself.
+- **Partner Name**: The name the AI calls you.
+- **System Personality**: The core instructions for how the AI behaves (e.g., "be romantic," "be professional").
 
-### Technical Constraints
-- **Zero Backend**: All API calls originate from the client. No server-side processing is required.
-- **Multi-line Input**: The chat interface supports multi-line queries (Shift+Enter or Enter for newline).
-- **Logic Chain**: When `Deep Analysis` is enabled, the AI allocates specific tokens to internal reasoning to improve the accuracy of complex answers.
+## Technologies
 
-## 🧪 Scientific Directives (System Prompt)
-The AI is governed by the `SYSTEM_CORE` directive:
-- **Identity**: Serenity AI.
-- **Role**: Advanced Scientific and Logical Assistant.
-- **Behavior**: Objective, precise, technical, and analytical.
-- **Formatting**: Structured output using headers and empirical data points.
-
----
-*Developed by Anshuman Singh | Serenity Intelligence Platform v10.03.07*
+- React 19
+- Tailwind CSS
+- Lucide React (Icons)
+- Google GenAI SDK

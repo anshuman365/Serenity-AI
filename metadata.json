@@ -1,8 +1,5 @@
 {
   "name": "Serenity AI",
-  "description": "Scientific Intelligence Platform v10.03.07",
-  "version": "10.03.07",
-  "requestFramePermissions": [
-    "microphone"
-  ]
+  "description": "A personalized, beautiful AI assistant featuring chat, image generation, and news updates.",
+  "requestFramePermissions": []
 }

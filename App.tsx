@@ -1,397 +1,675 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Menu, Settings, Plus, MessageSquare, 
-  Image as ImageIcon, Sparkles, User, Sun, Moon, 
-  RefreshCw, Info, Trash2, Globe2, Cpu, Copy, CheckCircle
+  Image as ImageIcon, Newspaper, Sparkles, Bot, 
+  ChevronLeft, User, Sun, Moon,
+  RefreshCw, ExternalLink, Download, Info, Heart, Globe, Github,
+  Zap, Camera, Feather, Smile, Trash2,
+  Code, BookOpen, Cpu, Lightbulb // New icons for professional topics
 } from 'lucide-react';
 import { generateOpenRouterResponse, classifyUserIntention, summarizeNewsForChat, generateChatTitle } from './services/openRouterService';
 import { generateImageHF } from './services/imageService';
 import { fetchLatestNews, checkAndNotifyNews } from './services/newsService';
+import { fetchBackendKeys } from './services/config';
 import { saveImageToDb, getAllImagesFromDb, requestStoragePermission } from './services/storage';
 import SettingsModal from './components/SettingsModal';
 import { ChatSession, Message, AppSettings, PageView, ImageHistoryItem, NewsArticle } from './types';
 
+// Utils
 const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
 
+// UPDATED: Professional AI Assistant Default Settings
 const DEFAULT_SETTINGS: AppSettings = {
-  userName: 'Serenity Intelligence',
-  partnerName: 'Operator',
-  systemPrompt: `You are Serenity AI. Always provide highly structured, scientific, and logical answers. Use headers (###) for sections and bold text (**word**) for key terms. Maintain a professional tone.`,
+  userName: 'User', // Changed from 'Tera Hero'
+  partnerName: 'Serenity AI', // Changed from 'Meri Jaan'
+  systemPrompt: 'You are Serenity AI, a sophisticated AI assistant designed to provide intelligent, accurate, and helpful responses. You are knowledgeable in technology, science, creative arts, and general topics. You communicate in clear, professional English. Your responses should be well-structured, factual when possible, and appropriately detailed based on the query. Admit when you don\'t know something and offer to help with related topics.',
   customMemories: '',
-  themeId: 'midnight',
-  fontFamily: 'Inter',
-  newsRefreshInterval: 20,
-  deepAnalysisMode: true
+  themeId: 'ocean', // Changed default theme to more professional ocean
+  fontFamily: 'Inter', // More professional font
+  newsRefreshInterval: 20
 };
 
+// Theme configurations (unchanged but we'll use ocean as default)
 const THEMES = {
-  midnight: { 
-    gradient: 'from-slate-800 to-indigo-950', 
-    primary: 'text-indigo-400', 
-    bgSoft: 'bg-indigo-50 dark:bg-indigo-950/30', 
-    border: 'border-slate-200 dark:border-slate-800', 
-    buttonGradient: 'bg-gradient-to-r from-indigo-600 to-violet-700', 
-    msgBot: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800', 
-    msgUser: 'bg-slate-800 dark:bg-indigo-900' 
+  romantic: {
+    gradient: 'from-pink-500 to-purple-600',
+    primary: 'text-pink-500',
+    bgSoft: 'bg-pink-50 dark:bg-pink-900/20',
+    border: 'border-pink-200 dark:border-pink-800',
+    buttonGradient: 'bg-gradient-to-r from-pink-500 to-purple-600',
+    msgBot: 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700',
+    msgUser: 'bg-gradient-to-br from-pink-500 to-purple-600',
+  },
+  ocean: {
+    gradient: 'from-blue-500 to-cyan-500',
+    primary: 'text-blue-500',
+    bgSoft: 'bg-blue-50 dark:bg-blue-900/20',
+    border: 'border-blue-200 dark:border-blue-800',
+    buttonGradient: 'bg-gradient-to-r from-blue-500 to-cyan-600',
+    msgBot: 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700',
+    msgUser: 'bg-gradient-to-br from-blue-500 to-cyan-600',
+  },
+  nature: {
+    gradient: 'from-emerald-500 to-teal-600',
+    primary: 'text-emerald-600',
+    bgSoft: 'bg-emerald-50 dark:bg-emerald-900/20',
+    border: 'border-emerald-200 dark:border-emerald-800',
+    buttonGradient: 'bg-gradient-to-r from-emerald-500 to-teal-600',
+    msgBot: 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700',
+    msgUser: 'bg-gradient-to-br from-emerald-500 to-teal-600',
+  },
+  sunset: {
+    gradient: 'from-orange-500 to-red-500',
+    primary: 'text-orange-600',
+    bgSoft: 'bg-orange-50 dark:bg-orange-900/20',
+    border: 'border-orange-200 dark:border-orange-800',
+    buttonGradient: 'bg-gradient-to-r from-orange-500 to-red-500',
+    msgBot: 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700',
+    msgUser: 'bg-gradient-to-br from-orange-500 to-red-600',
+  },
+  midnight: {
+    gradient: 'from-gray-700 to-gray-900',
+    primary: 'text-gray-600 dark:text-gray-300',
+    bgSoft: 'bg-gray-100 dark:bg-gray-800',
+    border: 'border-gray-300 dark:border-gray-600',
+    buttonGradient: 'bg-gradient-to-r from-gray-700 to-black',
+    msgBot: 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600',
+    msgUser: 'bg-gradient-to-br from-gray-700 to-gray-900',
   }
 };
 
 const App: React.FC = () => {
   const [activePage, setActivePage] = useState<PageView>('chat');
-  const [darkMode, setDarkMode] = useState(() => JSON.parse(localStorage.getItem('serenity_theme_mode') || 'true'));
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('serenity_settings');
-    return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+  
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('serenity_theme_mode');
+      return saved ? JSON.parse(saved) : true;
+    } catch { return true; }
   });
-  const [chats, setChats] = useState<ChatSession[]>(() => JSON.parse(localStorage.getItem('serenity_chats') || '[]'));
+
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem('serenity_settings');
+      return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+    } catch { return DEFAULT_SETTINGS; }
+  });
+
+  const [chats, setChats] = useState<ChatSession[]>(() => {
+    try {
+      const saved = localStorage.getItem('serenity_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
-  const [cachedNews, setCachedNews] = useState<NewsArticle[]>([]);
+  const [cachedNews, setCachedNews] = useState<NewsArticle[]>(() => {
+    try {
+      const saved = localStorage.getItem('serenity_news_cache');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const theme = THEMES.midnight; // Defaulting to midnight for stability
+  const theme = THEMES[settings.themeId] || THEMES.ocean; // Default to ocean
+
+  useEffect(() => {
+    if (!currentChatId && chats.length > 0) setCurrentChatId(chats[0].id);
+  }, [chats, currentChatId]);
 
   useEffect(() => {
     localStorage.setItem('serenity_chats', JSON.stringify(chats));
-    localStorage.setItem('serenity_settings', JSON.stringify(settings));
-    document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('serenity_theme_mode', JSON.stringify(darkMode));
-  }, [chats, settings, darkMode]);
+  }, [chats]);
 
-  // App Startup Logic: Always start fresh
   useEffect(() => {
-    const init = async () => {
-      await requestStoragePermission();
-      const imgs = await getAllImagesFromDb();
-      setImageHistory(imgs);
-      const news = await fetchLatestNews('science');
-      setCachedNews(news);
-      checkAndNotifyNews();
-      handleCreateNewChat(); // Start new session on every load
+    localStorage.setItem('serenity_settings', JSON.stringify(settings));
+  }, [settings]);
+
+  // IMAGE HYDRATION
+  useEffect(() => {
+    const hydrateImages = async () => {
+      const dbImages = await getAllImagesFromDb();
+      setImageHistory(dbImages);
+
+      let chatsChanged = false;
+      const updatedChats = chats.map(chat => {
+        let msgsChanged = false;
+        const newMsgs = chat.messages.map(msg => {
+          if (msg.imageId) {
+            const freshImg = dbImages.find(img => img.id === msg.imageId);
+            if (freshImg && freshImg.url !== msg.image) {
+               msgsChanged = true;
+               return { ...msg, image: freshImg.url };
+            }
+          }
+          return msg;
+        });
+
+        if (msgsChanged) {
+          chatsChanged = true;
+          return { ...chat, messages: newMsgs };
+        }
+        return chat;
+      });
+
+      if (chatsChanged) {
+        console.log("Restored images in chat history");
+        setChats(updatedChats);
+      }
     };
-    init();
+
+    hydrateImages();
+    requestStoragePermission();
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chats, currentChatId, isTyping, activePage]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 128) + 'px';
+    }
+  }, [input]);
+
+  // Dark Mode Logic
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('serenity_theme_mode', JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  useEffect(() => {
+    fetchBackendKeys();
+    fetchLatestNews('technology', false).then(setCachedNews);
+    
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+
+    const interval = setInterval(() => {
+      console.log("Checking for updates...");
+      checkAndNotifyNews();
+      fetchLatestNews('technology', false).then(setCachedNews); 
+    }, settings.newsRefreshInterval * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [settings.newsRefreshInterval]);
+
   const handleCreateNewChat = () => {
-    const id = generateId();
-    const newChat: ChatSession = { id, title: 'New Analysis', messages: [], createdAt: Date.now(), updatedAt: Date.now() };
-    setChats(prev => [newChat, ...prev]);
-    setCurrentChatId(id);
+    const newChat: ChatSession = {
+      id: generateId(),
+      title: 'New Conversation',
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setChats([newChat, ...chats]);
+    setCurrentChatId(newChat.id);
     setActivePage('chat');
     setIsSidebarOpen(false);
-    setInput('');
   };
 
-  const handleDeleteChat = (e: React.MouseEvent, id: string) => {
+  const handleDeleteChat = (e: React.MouseEvent, chatIdToDelete: string) => {
     e.stopPropagation();
-    if (window.confirm("Archiving session. Proceed with deletion?")) {
-      const filtered = chats.filter(c => c.id !== id);
-      setChats(filtered);
-      if (currentChatId === id) {
-        setCurrentChatId(filtered.length > 0 ? filtered[0].id : null);
+    
+    if (window.confirm("Are you sure you want to delete this conversation?")) {
+      const updatedChats = chats.filter(c => c.id !== chatIdToDelete);
+      setChats(updatedChats);
+      
+      if (currentChatId === chatIdToDelete) {
+        if (updatedChats.length > 0) {
+          setCurrentChatId(updatedChats[0].id);
+        } else {
+          setCurrentChatId(null);
+        }
       }
     }
-  };
-
-  const renderMarkdown = (content: string) => {
-    // Robust parser for scientific output
-    let html = content
-      .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gm, '<h3 class="border-b border-indigo-500/20 pb-1">$1</h3>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em class="italic opacity-80">$1</em>')
-      .replace(/^- (.*$)/gm, '<li>$1</li>')
-      .replace(/\n/g, '<br />');
-
-    // Wrap list items in <ul> if they exist
-    if (html.includes('<li>')) {
-      html = html.replace(/(<li>.*<\/li>)/gms, '<ul class="my-2">$1</ul>');
-    }
-
-    return <div className="prose prose-sm dark:prose-invert font-mono text-[13px] leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
   const handleSendMessage = async (textOverride?: string) => {
-    const txt = textOverride || input;
-    if (!txt.trim() || isTyping) return;
+    const textToSend = textOverride || input;
+    if (!textToSend.trim()) return;
     
-    let activeId = currentChatId;
-    if (!activeId) {
-      activeId = generateId();
-      setChats([{ id: activeId, title: txt.slice(0, 20), messages: [], createdAt: Date.now(), updatedAt: Date.now() }, ...chats]);
-      setCurrentChatId(activeId);
+    let activeChatId = currentChatId;
+    let activeChats = [...chats];
+    if (!activeChatId) {
+      const newChat = {
+        id: generateId(),
+        title: textToSend.slice(0, 30) + '...',
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      activeChats = [newChat, ...chats];
+      activeChatId = newChat.id;
+      setChats(activeChats);
+      setCurrentChatId(activeChatId);
     }
 
-    const userMsg: Message = { id: generateId(), role: 'user', content: txt, timestamp: Date.now() };
-    setChats(prev => prev.map(c => c.id === activeId ? { ...c, messages: [...c.messages, userMsg], updatedAt: Date.now() } : c));
+    const userMsg: Message = { id: generateId(), role: 'user', content: textToSend, timestamp: Date.now() };
+    
+    setChats(prev => prev.map(c => c.id === activeChatId ? {
+      ...c, messages: [...c.messages, userMsg], updatedAt: Date.now()
+    } : c));
+    
     setInput('');
+    if(textareaRef.current) textareaRef.current.style.height = 'auto';
     setIsTyping(true);
 
     try {
-      const intention = await classifyUserIntention(txt);
-      let content = "", imgUrl = undefined, imgId = undefined, articles = [], thought = undefined;
+      const intention = await classifyUserIntention(userMsg.content);
+      console.log("Intention:", intention);
+
+      let botContent = "";
+      let generatedImageUrl = undefined;
+      let generatedImageId = undefined;
+      let newsArticlesForChat: NewsArticle[] = [];
 
       if (intention.type === 'generate_image') {
-        setLoadingAction('Rendering Visualization...');
+        setLoadingAction('Generating Image...');
         const blob = await generateImageHF(intention.query);
-        imgUrl = URL.createObjectURL(blob);
-        imgId = generateId();
-        await saveImageToDb({ id: imgId, url: imgUrl, prompt: intention.query, createdAt: Date.now() }, blob);
-        setImageHistory(prev => [{id: imgId!, url: imgUrl!, prompt: intention.query, createdAt: Date.now()}, ...prev]);
-        content = "Visual core initialized. Scientific visualization rendered.";
+        generatedImageUrl = URL.createObjectURL(blob);
+        generatedImageId = generateId();
+        
+        const newImgItem: ImageHistoryItem = {
+           id: generatedImageId,
+           url: generatedImageUrl,
+           prompt: intention.query,
+           createdAt: Date.now()
+        };
+        
+        await saveImageToDb(newImgItem, blob);
+        
+        setImageHistory(prev => [newImgItem, ...prev]);
+        botContent = "I've generated an image based on your description. Here it is:";
+        
       } else if (intention.type === 'fetch_news') {
-        setLoadingAction('Retrieving Empirical Data...');
-        articles = await fetchLatestNews(intention.query || 'science', true);
+        setLoadingAction('Fetching News...');
+        const articles = await fetchLatestNews(intention.query || 'technology', true);
         setCachedNews(articles);
-        content = await summarizeNewsForChat(articles, txt, settings.systemPrompt);
+        newsArticlesForChat = articles;
+        botContent = await summarizeNewsForChat(articles, userMsg.content, settings.systemPrompt);
+        
       } else {
-        setLoadingAction('Logical Processing...');
-        const currentChat = chats.find(c => c.id === activeId);
+        const currentChat = activeChats.find(c => c.id === activeChatId);
         const history = currentChat ? [...currentChat.messages, userMsg] : [userMsg];
-        const res = await generateOpenRouterResponse(history, settings.systemPrompt, settings.deepAnalysisMode);
-        content = res.content;
-        thought = res.thought;
+        const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        const fullPrompt = `
+          Current Date: ${today}
+          ${settings.systemPrompt}
+          User Name: ${settings.userName}
+          AI Name: ${settings.partnerName}
+          User Preferences: ${settings.customMemories}
+        `;
+        
+        botContent = await generateOpenRouterResponse(history, fullPrompt);
       }
 
-      const botMsg: Message = { id: generateId(), role: 'assistant', content, image: imgUrl, imageId: imgId, newsArticles: articles, timestamp: Date.now(), thoughtProcess: thought };
-      setChats(prev => prev.map(c => c.id === activeId ? { ...c, messages: [...c.messages, botMsg] } : c));
-      
-      const updatedChat = chats.find(c => c.id === activeId);
-      if (updatedChat && updatedChat.messages.length <= 2) {
-        generateChatTitle([userMsg, botMsg]).then(t => setChats(prev => prev.map(c => c.id === activeId ? { ...c, title: t } : c)));
+      const botMsg: Message = {
+        id: generateId(),
+        role: 'assistant',
+        content: botContent,
+        image: generatedImageUrl,
+        imageId: generatedImageId,
+        newsArticles: newsArticlesForChat.length > 0 ? newsArticlesForChat : undefined,
+        timestamp: Date.now()
+      };
+
+      setChats(prev => prev.map(c => c.id === activeChatId ? {
+        ...c, messages: [...c.messages, botMsg]
+      } : c));
+
+      const chatContext = activeChats.find(c => c.id === activeChatId);
+      const fullHistory = chatContext ? [...chatContext.messages, userMsg, botMsg] : [userMsg, botMsg];
+
+      if (fullHistory.length === 2 || fullHistory.length === 4) {
+        generateChatTitle(fullHistory).then(newTitle => {
+           if (newTitle) {
+             setChats(currentChats => currentChats.map(c => 
+               c.id === activeChatId ? { ...c, title: newTitle } : c
+             ));
+           }
+        });
       }
-    } catch (err: any) {
-      const errMsg: Message = { id: generateId(), role: 'system', content: "Protocol Fault: Logical connection reset. Please re-execute.", timestamp: Date.now() };
-      setChats(prev => prev.map(c => c.id === activeId ? { ...c, messages: [...c.messages, errMsg] } : c));
+
+    } catch (error: any) {
+      console.error(error);
+      const isKeyError = error.message.includes('API Key') || error.message.includes('missing');
+      const errM: Message = { 
+        id: generateId(), 
+        role: 'system', 
+        content: isKeyError 
+          ? "I apologize, but I'm having trouble connecting to the AI service. Please check your API key in Settings." 
+          : "I encountered a network issue. Please try again.", 
+        timestamp: Date.now() 
+      };
+      setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: [...c.messages, errM] } : c));
+      
+      if (isKeyError) {
+        setShowSettings(true); 
+      }
     } finally {
       setIsTyping(false);
       setLoadingAction(null);
     }
   };
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopyStatus(id);
-    setTimeout(() => setCopyStatus(null), 2000);
-  };
-
   const renderChat = () => {
     const activeChat = chats.find(c => c.id === currentChatId);
+    
+    // UPDATED: Professional suggestion chips
+    const suggestions = [
+      { icon: Cpu, text: "Explain quantum computing basics" },
+      { icon: Code, text: "Write a Python function to sort data" },
+      { icon: BookOpen, text: "Summarize today's tech news" },
+      { icon: Lightbulb, text: "Suggest a creative project idea" }
+    ];
+
     return (
       <div className="flex-1 flex flex-col h-full overflow-hidden safe-pb">
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar bg-slate-50 dark:bg-black/20">
-          {!activeChat || activeChat.messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-fade-in-up">
-              <div className={`w-16 h-16 bg-gradient-to-tr ${theme.gradient} rounded-2xl flex items-center justify-center mb-6 shadow-2xl animate-pulse`}><Cpu size={32} className="text-white"/></div>
-              <h3 className="text-xl font-bold font-mono tracking-tight uppercase dark:text-white">Neural Hub Online</h3>
-              <p className="text-[10px] text-slate-500 max-w-xs font-mono uppercase tracking-[0.3em] mt-3">Advanced Scientific Interface v10.03.07</p>
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
-                {["Summarize CRISPR logic", "Analyze fusion energy", "Dark matter theories", "Quantum entanglement"].map((prompt, i) => (
-                  <button key={i} onClick={() => handleSendMessage(prompt)} className="p-4 text-left text-xs font-mono bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-slate-600 dark:text-slate-400">
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            activeChat.messages.map(m => (
-              <div key={m.id} className={`flex gap-3 max-w-4xl mx-auto ${m.role === 'user' ? 'flex-row-reverse' : ''} animate-fade-in-up`}>
-                <div className={`w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center shadow-md ${m.role === 'user' ? 'bg-slate-700 text-white' : `${theme.buttonGradient} text-white`}`}>{m.role === 'user' ? <User size={16}/> : <Cpu size={16}/>}</div>
-                <div className={`flex flex-col gap-2 max-w-[85%] ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  {m.thoughtProcess && (
-                    <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border-l-2 border-indigo-500 px-4 py-3 rounded-r-xl text-[10px] font-mono text-indigo-600 dark:text-indigo-400 mb-1 max-w-full">
-                      <span className="font-bold uppercase block mb-1 tracking-widest text-[8px]">Core Reasoning:</span>
-                      {renderMarkdown(m.thoughtProcess)}
-                    </div>
-                  )}
-                  <div className={`relative group px-5 py-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-slate-800 text-white rounded-tr-none' : `${theme.msgBot} dark:text-slate-100 border dark:border-slate-800 rounded-tl-none`}`}>
-                    {renderMarkdown(m.content)}
-                    <button onClick={() => copyToClipboard(m.content, m.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1.5 bg-white/10 dark:bg-black/30 rounded-lg transition-all hover:bg-white/20">
-                      {copyStatus === m.id ? <CheckCircle size={12} className="text-green-500"/> : <Copy size={12}/>}
-                    </button>
-                  </div>
-                  {m.image && <img src={m.image} className="rounded-2xl mt-2 border border-slate-200 dark:border-slate-800 shadow-xl max-w-full h-auto transform hover:scale-[1.02] transition-transform"/>}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+           {!activeChat && (
+             <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-fade-in-up">
+               <div className={`w-28 h-28 bg-gradient-to-tr ${theme.gradient} rounded-full flex items-center justify-center mb-6 shadow-2xl ring-4 ring-white dark:ring-gray-800`}>
+                 <Bot size={56} className="text-white drop-shadow-md" />
+               </div>
+               <h3 className="text-3xl font-bold dark:text-gray-100 mb-2">Hello, {settings.userName}</h3>
+               <p className="dark:text-gray-400 mb-8 max-w-xs mx-auto">I'm {settings.partnerName}. How can I assist you today?</p>
+               
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
+                 {suggestions.map((s, idx) => (
+                   <button 
+                     key={idx}
+                     onClick={() => handleSendMessage(s.text)}
+                     className="flex items-center gap-3 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all text-left group"
+                   >
+                     <div className={`p-2 rounded-lg bg-gray-50 dark:bg-gray-700 ${theme.primary} group-hover:scale-110 transition-transform`}>
+                        <s.icon size={18}/>
+                     </div>
+                     <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{s.text}</span>
+                   </button>
+                 ))}
+               </div>
+             </div>
+           )}
+           {activeChat?.messages.map(msg => (
+             <div key={msg.id} className={`flex gap-3 md:gap-4 max-w-3xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+               <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-600 text-white' : `${theme.msgUser} text-white`}`}>
+                 {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+               </div>
+               <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                 <div className={`px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-sm text-sm whitespace-pre-wrap leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-700 text-white rounded-tr-sm' : `${theme.msgBot} border text-gray-700 dark:text-gray-200 rounded-tl-sm`}`}>
+                   {msg.content}
+                 </div>
+                 
+                 {msg.image && (
+                   <div className="relative group">
+                     <img src={msg.image} alt="Generated" className="rounded-xl shadow-lg border-4 border-white dark:border-gray-700 max-w-full bg-gray-200 dark:bg-gray-800 min-h-[200px]" />
+                     <a 
+                       href={msg.image} 
+                       download={`serenity-${Date.now()}.png`}
+                       className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-full shadow-md text-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                     >
+                       <Download size={16}/>
+                     </a>
+                   </div>
+                 )}
+
+                 {msg.newsArticles && msg.newsArticles.length > 0 && (
+                   <div className="w-full flex gap-3 overflow-x-auto py-2 custom-scrollbar snap-x">
+                     {msg.newsArticles.map((article, idx) => (
+                       <a 
+                         key={idx} 
+                         href={article.url} 
+                         target="_blank" 
+                         rel="noreferrer"
+                         className="flex-shrink-0 w-60 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-all group snap-start"
+                       >
+                         <div className="h-32 overflow-hidden relative">
+                           <img src={article.image} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                           <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
+                         </div>
+                         <div className="p-3">
+                           <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-2 mb-1">{article.title}</h4>
+                           <div className="flex items-center justify-between text-[10px] text-gray-500">
+                             <span>{article.source}</span>
+                             <ExternalLink size={10} />
+                           </div>
+                         </div>
+                       </a>
+                     ))}
+                   </div>
+                 )}
+
+                 <span className="text-[10px] text-gray-400 select-none">{new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+               </div>
+             </div>
+           ))}
+           {isTyping && (
+             <div className="flex gap-4 max-w-3xl mx-auto items-center animate-in fade-in duration-300">
+                <div className={`w-8 h-8 rounded-full ${theme.msgUser} flex items-center justify-center text-white animate-pulse`}>
+                  <Bot size={14}/>
                 </div>
-              </div>
-            ))
-          )}
-          {isTyping && (
-            <div className="flex gap-3 max-w-4xl mx-auto items-center animate-pulse">
-              <div className={`w-9 h-9 rounded-xl ${theme.buttonGradient}`}/>
-              <div className="text-[10px] text-indigo-500 font-mono uppercase tracking-[0.2em]">{loadingAction || 'Processing protocol...'}</div>
-            </div>
-          )}
-          <div ref={messagesEndRef} className="h-6"/>
+                <div className="bg-white dark:bg-gray-800 px-4 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500 flex items-center gap-2 shadow-sm">
+                   {loadingAction ? (
+                     <span className="font-medium bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-500 animate-pulse">{loadingAction}</span>
+                   ) : (
+                     <div className="flex gap-1.5 h-full items-center">
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"/>
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"/>
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"/>
+                     </div>
+                   )}
+                </div>
+             </div>
+           )}
+           <div ref={messagesEndRef} className="h-2"/>
         </div>
-        
-        <div className="p-4 md:p-6 bg-white/80 dark:bg-black/80 border-t dark:border-slate-800 backdrop-blur-xl">
-          <div className="max-w-4xl mx-auto flex gap-3 items-end">
+        <div className="p-3 md:p-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 pb-safe">
+          <div className="max-w-3xl mx-auto flex items-end gap-2">
             <textarea 
-              ref={textareaRef} 
+              ref={textareaRef}
               value={input} 
               onChange={e=>setInput(e.target.value)} 
-              placeholder="Execute analysis query..." 
-              className="flex-1 bg-white dark:bg-slate-900 border dark:border-slate-800 focus:ring-2 focus:ring-indigo-500/40 rounded-2xl px-5 py-4 text-sm outline-none resize-none dark:text-white min-h-[56px] max-h-48 font-mono leading-relaxed shadow-inner" 
+              placeholder={`Message ${settings.partnerName}...`}
+              className="flex-1 bg-white dark:bg-gray-800 border-0 ring-1 ring-gray-200 dark:ring-gray-700 focus:ring-2 focus:ring-blue-400 rounded-2xl px-5 py-3 shadow-sm transition-all outline-none dark:text-white resize-none min-h-[48px] max-h-32 custom-scrollbar text-base"
               rows={1}
             />
-            <button 
-              onClick={()=>handleSendMessage()} 
-              disabled={!input.trim() || isTyping} 
-              className={`p-4 rounded-2xl text-white ${theme.buttonGradient} shadow-xl active:scale-95 flex-shrink-0 transition-all disabled:opacity-50`}
-            >
-              <Send size={24}/>
+            <button onClick={() => handleSendMessage()} disabled={!input.trim() || isTyping} className={`p-3 md:p-3.5 rounded-xl shadow-lg transition-all transform hover:scale-105 active:scale-95 mb-1 ${!input.trim() ? 'bg-gray-200 dark:bg-gray-700 text-gray-400' : `${theme.buttonGradient} text-white`}`}>
+              <Send size={20}/>
             </button>
           </div>
-          <p className="text-[9px] text-center text-slate-400 mt-3 font-mono uppercase tracking-[0.4em]">Press Send to synthesize data | Enter for multi-line support</p>
         </div>
       </div>
     );
   };
 
+  const renderGallery = () => (
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-gray-50 dark:bg-gray-900 safe-pb custom-scrollbar">
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 dark:text-white"><ImageIcon className="text-blue-500"/> Generated Images</h2>
+      {imageHistory.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">No images generated yet. Try asking me to create an image!</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {imageHistory.map(img => (
+            <div key={img.id} className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-gray-100 dark:border-gray-700 group">
+              <div className="relative aspect-square">
+                <img src={img.url} alt={img.prompt} className="w-full h-full object-cover"/>
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <a href={img.url} download={`serenity-${img.id}.png`} className="p-3 bg-white rounded-full text-gray-900 hover:scale-110 transition-transform"><Download size={20}/></a>
+                </div>
+              </div>
+              <div className="p-3">
+                <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{img.prompt}</p>
+                <p className="text-xs text-gray-400 mt-1">{new Date(img.createdAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderNews = () => (
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-gray-50 dark:bg-gray-900 safe-pb custom-scrollbar">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold flex items-center gap-2 dark:text-white"><Newspaper className="text-purple-500"/> Latest Updates</h2>
+        <button 
+           onClick={() => fetchLatestNews('technology', true).then(setCachedNews)}
+           className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm text-gray-500 hover:text-purple-500"
+        >
+          <RefreshCw size={20}/>
+        </button>
+      </div>
+      <div className="grid gap-4 max-w-4xl mx-auto">
+        {cachedNews.length === 0 ? (
+          <div className="text-center py-20 text-gray-400">Loading or no news available...</div>
+        ) : (
+          cachedNews.map((n, i) => (
+            <div key={i} className="flex flex-col md:flex-row gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-200 transition-colors">
+              <img src={n.image} alt={n.title} className="w-full md:w-48 h-32 object-cover rounded-lg"/>
+              <div className="flex-1">
+                <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200 mb-2">{n.title}</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">{n.description}</p>
+                <div className="flex justify-between items-center text-xs text-gray-400">
+                   <span>{n.source} • {new Date(n.publishedAt).toLocaleDateString()}</span>
+                   <a href={n.url} target="_blank" className="text-purple-500 hover:underline">Read more</a>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const renderAbout = () => (
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-gray-50 dark:bg-gray-900 safe-pb flex items-center justify-center custom-scrollbar">
+      <div className="max-w-2xl w-full bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 relative overflow-hidden">
+        <div className={`absolute top-0 left-0 w-full h-32 bg-gradient-to-r ${theme.gradient} opacity-20`}></div>
+        <div className="relative z-10 flex flex-col items-center text-center">
+           <div className={`w-24 h-24 rounded-full bg-gradient-to-tr ${theme.gradient} flex items-center justify-center text-white mb-6 shadow-lg`}>
+              <Sparkles size={40}/>
+           </div>
+           <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Serenity AI</h2>
+           <p className="text-gray-500 dark:text-gray-400 mb-8">Intelligent AI Assistant & Creative Partner</p>
+           
+           <div className="grid gap-4 w-full text-left mb-8">
+              <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                 <h3 className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2"><User size={18} className="text-blue-500"/> About</h3>
+                 <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Serenity AI is a sophisticated assistant designed to help with research, creative tasks, technical problems, and intelligent conversation.</p>
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                 <h3 className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2"><Code size={18} className="text-cyan-500"/> Capabilities</h3>
+                 <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">AI Chat • Image Generation • News Analysis • Technical Assistance • Creative Writing</p>
+              </div>
+           </div>
+
+           <a 
+             href="https://anshuman365.github.io" 
+             target="_blank" 
+             rel="noreferrer"
+             className={`flex items-center gap-2 px-6 py-3 rounded-full ${theme.buttonGradient} text-white font-medium shadow-md hover:scale-105 transition-transform`}
+           >
+             <Globe size={18}/> Developer's Website
+           </a>
+           <p className="text-xs text-gray-400 mt-6">Created by Anshuman Singh</p>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex h-screen bg-white dark:bg-black text-slate-900 dark:text-slate-100 overflow-hidden" style={{fontFamily: settings.fontFamily}}>
-      <aside className={`fixed md:static inset-y-0 z-30 w-72 bg-white dark:bg-slate-950 border-r dark:border-slate-800 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="flex flex-col h-full p-6">
-          <div className="flex items-center gap-3 mb-10">
-            <div className={`p-2.5 rounded-xl bg-gradient-to-tr ${theme.gradient} text-white shadow-lg`}><Sparkles size={22}/></div>
-            <h1 className="text-xl font-bold font-mono tracking-tighter uppercase">Serenity</h1>
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-100 transition-colors duration-300" style={{fontFamily: settings.fontFamily}}>
+      {/* Sidebar */}
+      <aside className={`fixed md:static inset-y-0 z-30 w-72 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="flex flex-col h-full p-4 safe-pb">
+          <div className="flex items-center justify-between mb-8 px-2 mt-2">
+            <h1 className={`text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r ${theme.gradient} flex items-center gap-2`}>
+              <div className={`p-1.5 rounded-lg ${theme.buttonGradient} text-white`}><Sparkles size={20}/></div>
+              Serenity AI
+            </h1>
+            <button onClick={()=>setIsSidebarOpen(false)} className="md:hidden text-gray-400 p-2"><ChevronLeft/></button>
           </div>
-          
-          <nav className="space-y-1.5 mb-8">
-            {['chat', 'gallery', 'news', 'about'].map(p => (
-              <button key={p} onClick={() => { setActivePage(p as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl capitalize font-mono text-[11px] uppercase tracking-widest transition-all ${activePage === p ? `bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 font-bold shadow-sm` : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
-                {p === 'chat' && <MessageSquare size={18}/>}
-                {p === 'gallery' && <ImageIcon size={18}/>}
-                {p === 'news' && <Globe2 size={18}/>}
-                {p === 'about' && <Info size={18}/>}
-                {p}
-              </button>
-            ))}
+          <nav className="space-y-2 mb-6">
+            <button onClick={() => { setActivePage('chat'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activePage === 'chat' ? `${theme.bgSoft} ${theme.primary} font-medium` : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <MessageSquare size={20}/> Chat
+            </button>
+            <button onClick={() => { setActivePage('gallery'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activePage === 'gallery' ? `${theme.bgSoft} ${theme.primary} font-medium` : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <ImageIcon size={20}/> Gallery
+            </button>
+            <button onClick={() => { setActivePage('news'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activePage === 'news' ? `${theme.bgSoft} ${theme.primary} font-medium` : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Newspaper size={20}/> News Feed
+            </button>
+            <button onClick={() => { setActivePage('about'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${activePage === 'about' ? `${theme.bgSoft} ${theme.primary} font-medium` : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <Info size={20}/> About
+            </button>
           </nav>
-          
-          <div className="flex-1 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
-            <p className="text-[9px] font-mono text-slate-400 uppercase tracking-widest px-4 mb-3">Archived Sessions</p>
+          <button onClick={handleCreateNewChat} className={`w-full flex items-center justify-center gap-2 border border-dashed border-gray-300 dark:border-gray-700 p-3 rounded-xl text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all mb-4`}>
+             <Plus size={18}/> New Conversation
+          </button>
+          <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
             {chats.map(c => (
-              <div key={c.id} onClick={() => { setCurrentChatId(c.id); setActivePage('chat'); setIsSidebarOpen(false); }} className={`group flex items-center justify-between p-3 rounded-xl text-[11px] font-mono transition-all cursor-pointer ${currentChatId === c.id ? 'bg-slate-100 dark:bg-slate-900 text-indigo-500 font-bold shadow-inner' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
-                <span className="truncate flex-1">{c.title}</span>
-                <button onClick={e => handleDeleteChat(e, c.id)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:text-red-500 transition-opacity"><Trash2 size={14}/></button>
+              <div 
+                key={c.id} 
+                onClick={()=>{setCurrentChatId(c.id); setActivePage('chat'); setIsSidebarOpen(false);}} 
+                className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm transition-colors ${currentChatId === c.id ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+              >
+                <span className="truncate flex-1 pr-2">{c.title}</span>
+                <button 
+                  onClick={(e) => handleDeleteChat(e, c.id)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-all"
+                  title="Delete Conversation"
+                >
+                  <Trash2 size={14}/>
+                </button>
               </div>
             ))}
           </div>
-          
-          <button onClick={() => setShowSettings(true)} className="flex items-center gap-4 p-5 mt-6 text-slate-500 border-t dark:border-slate-900 font-mono text-[10px] uppercase tracking-widest hover:text-indigo-500 transition-colors"><Settings size={20}/> Configuration</button>
+          <div className="pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+             <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-full ${theme.buttonGradient} flex items-center justify-center text-white font-bold`}>AI</div>
+                <div className="text-sm font-medium">{settings.partnerName}</div>
+             </div>
+             <button onClick={()=>setShowSettings(true)} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><Settings size={18}/></button>
+          </div>
         </div>
       </aside>
-      
-      <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-white dark:bg-black">
-        <header className="h-16 flex items-center justify-between px-6 border-b dark:border-slate-800 bg-white/70 dark:bg-black/70 backdrop-blur-2xl sticky top-0 z-20">
-          <div className="flex items-center gap-2">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-slate-500"><Menu size={24}/></button>
-            <h2 className="font-bold uppercase tracking-[0.4em] text-[10px] font-mono text-slate-400 ml-1">{activePage} Mode</h2>
-          </div>
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={handleCreateNewChat} 
-              className="px-4 py-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all flex items-center justify-center rounded-xl border border-indigo-500/20 shadow-sm active:scale-95"
-            >
-              <Plus size={18} />
-              <span className="hidden sm:inline text-[9px] ml-2 font-mono font-bold uppercase tracking-widest">New Session</span>
-            </button>
-            <button 
-              onClick={() => setDarkMode(!darkMode)} 
-              className="p-2.5 text-slate-500 hover:text-indigo-500 transition-colors flex items-center justify-center bg-slate-100 dark:bg-slate-900 rounded-xl"
-            >
-              {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
-            </button>
-          </div>
-        </header>
-        
-        {activePage === 'chat' && renderChat()}
-        
-        {activePage === 'gallery' && (
-          <div className="flex-1 overflow-y-auto p-4 md:p-10 custom-scrollbar">
-            <h2 className="text-2xl font-bold font-mono mb-10 uppercase tracking-[0.3em] flex items-center gap-3 dark:text-white"><ImageIcon className="text-indigo-500" size={28}/> Visual Archives</h2>
-            {imageHistory.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-slate-400 font-mono text-xs uppercase tracking-widest gap-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">
-                No visual synthesis data found.
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {imageHistory.map(img => (
-                  <div key={img.id} className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden shadow-lg border dark:border-slate-800 group relative aspect-square">
-                    <img src={img.url} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-700"/>
-                    <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-6 text-center">
-                      <p className="text-[10px] text-white font-mono uppercase tracking-widest leading-relaxed line-clamp-4">{img.prompt}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        
-        {activePage === 'news' && (
-           <div className="flex-1 overflow-y-auto p-4 md:p-10 custom-scrollbar">
-             <div className="flex justify-between items-center mb-10 max-w-5xl mx-auto">
-               <h2 className="text-2xl font-bold font-mono uppercase tracking-[0.3em] flex items-center gap-3 dark:text-white"><Globe2 className="text-indigo-500" size={28}/> Empirical Data Log</h2>
-               <button onClick={() => fetchLatestNews('science', true).then(setCachedNews)} className="p-2 text-slate-400 hover:text-indigo-500 transition-colors"><RefreshCw size={24}/></button>
-             </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto pb-10">
-               {cachedNews.map((n, i) => (
-                 <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border dark:border-slate-800 overflow-hidden flex flex-col hover:-translate-y-2 transition-all">
-                   <img src={n.image} className="h-48 w-full object-cover"/>
-                   <div className="p-6 flex-1 flex flex-col">
-                     <h3 className="font-bold text-sm mb-3 font-mono line-clamp-2 leading-relaxed dark:text-white">{n.title}</h3>
-                     <p className="text-[11px] text-slate-500 mb-6 line-clamp-3 leading-relaxed flex-1">{n.description}</p>
-                     <div className="mt-auto pt-5 border-t dark:border-slate-800 flex justify-between items-center text-[10px] font-mono">
-                       <span className="text-slate-400 uppercase">{n.source}</span>
-                       <a href={n.url} target="_blank" className="text-indigo-500 font-bold uppercase hover:underline">Full Report</a>
-                     </div>
-                   </div>
-                 </div>
-               ))}
-             </div>
-           </div>
-        )}
-        
-        {activePage === 'about' && (
-          <div className="flex-1 flex items-center justify-center p-6 bg-slate-50 dark:bg-black font-mono">
-            <div className="max-w-md w-full bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border dark:border-slate-800 shadow-2xl text-center">
-               <Cpu size={56} className="mx-auto mb-8 text-indigo-500 animate-pulse"/>
-               <h2 className="text-2xl font-bold mb-3 uppercase tracking-tighter dark:text-white">Serenity Intelligence</h2>
-               <p className="text-[10px] text-slate-500 uppercase tracking-[0.4em] mb-10">Advanced Production Hub v10.03.07</p>
-               <div className="text-left space-y-5 text-[11px] leading-relaxed">
-                  <div className="p-5 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl border dark:border-indigo-900/40">
-                    <span className="font-bold text-indigo-500 block mb-2 uppercase tracking-widest text-[9px]">Neural Architecture</span> 
-                    Synthesizing high-fidelity analysis via Gemini 3.0 logical processing.
-                  </div>
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border dark:border-slate-700">
-                    <span className="font-bold text-slate-500 block mb-2 uppercase tracking-widest text-[9px]">Persistence Protocol</span> 
-                    Immutable IndexedDB archiving for multidimensional scientific data logs.
-                  </div>
-               </div>
-               <div className="mt-12 pt-8 border-t dark:border-slate-800">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Lead Architect: Anshuman Singh</p>
-               </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col h-full relative">
+         <header className="h-16 flex items-center justify-between px-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 sticky top-0 z-20">
+            <div className="flex items-center gap-3">
+               <button onClick={()=>setIsSidebarOpen(true)} className="md:hidden p-2 text-gray-500"><Menu/></button>
+               <h2 className="font-semibold text-gray-800 dark:text-white capitalize">{activePage}</h2>
             </div>
-          </div>
-        )}
-      </main>
+            <button onClick={()=>setDarkMode(!darkMode)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+               {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
+            </button>
+         </header>
+
+         {activePage === 'chat' && renderChat()}
+         {activePage === 'gallery' && renderGallery()}
+         {activePage === 'news' && renderNews()}
+         {activePage === 'about' && renderAbout()}
+      </div>
+
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} settings={settings} onSave={setSettings}/>
       
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} settings={settings} onSave={setSettings}/>
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/80 z-20 md:hidden backdrop-blur-md" onClick={() => setIsSidebarOpen(false)}/>}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm" onClick={()=>setIsSidebarOpen(false)}/>}
     </div>
   );
 };

@@ -1,15 +1,14 @@
-
 {
   "name": "Serenity AI",
   "short_name": "Serenity",
-  "description": "Scientific Intelligence Hub (v10.03.07). Advanced logical analysis and data processing.",
+  "description": "Your personalized AI companion for chat, creativity, and daily updates.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f172a",
-  "theme_color": "#6366f1",
+  "theme_color": "#8b5cf6",
   "orientation": "any",
-  "categories": ["education", "science", "productivity"],
+  "categories": ["lifestyle", "social", "productivity"],
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/9440/9440315.png",
