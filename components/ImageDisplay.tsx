@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Download, Wand2, Sparkles, ImageOff, Loader2, AlertCircle } from 'lucide-react';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Download, Wand2, Sparkles, ImageOff, Loader2, RefreshCw } from 'lucide-react';
 import { getImageBlobById } from '../services/storage';
 
 interface Props {
@@ -14,58 +15,77 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [showRefinedPrompt, setShowRefinedPrompt] = useState(false);
+  const objectUrlRef = useRef<string | null>(null);
 
-  const loadImage = useCallback(async () => {
-    if (!imageId) {
-      setError(true);
-      setLoading(false);
-      return;
-    }
-
+  const loadImage = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError(false);
       
-      console.log('Loading image:', imageId);
+      // Cleanup previous URL if refreshing
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+
+      // Check for temporary session cache in localStorage (Chrome local storage fallback)
+      if (!forceRefresh) {
+        const sessionCache = sessionStorage.getItem(`img_url_${imageId}`);
+        if (sessionCache) {
+          // Test if URL is still valid (Object URLs die on refresh)
+          try {
+            const resp = await fetch(sessionCache, { method: 'HEAD' });
+            if (resp.ok) {
+              setImageUrl(sessionCache);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            // URL is dead, proceed to IndexedDB recovery
+          }
+        }
+      }
+      
+      // Load raw data from "Internal Storage" (IndexedDB)
       const blob = await getImageBlobById(imageId);
       
-      if (blob && blob.size > 0) {
+      if (blob) {
         const url = URL.createObjectURL(blob);
-        console.log('Created blob URL for image:', imageId, 'Size:', blob.size);
+        objectUrlRef.current = url;
         setImageUrl(url);
+        
+        // Store in session storage for faster access during this browser tab's life
+        sessionStorage.setItem(`img_url_${imageId}`, url);
       } else {
-        console.error('No blob or empty blob for image:', imageId);
+        console.warn(`Image ${imageId} not found in IndexedDB`);
         setError(true);
       }
     } catch (err) {
-      console.error('Failed to load image:', imageId, err);
+      console.error("Critical error loading image from storage:", err);
       setError(true);
     } finally {
       setLoading(false);
     }
-  }, [imageId]);
+  };
 
   useEffect(() => {
-    loadImage();
-
-    // Cleanup function
+    if (imageId) {
+      loadImage();
+    }
+    
     return () => {
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl);
-      }
+      // We don't immediately revoke here to allow back/forth navigation
+      // but a proper app would manage a global cache.
     };
-  }, [imageId, loadImage]);
-
-  const handleRetry = () => {
-    loadImage();
-  };
+  }, [imageId]);
 
   const handleDownload = async () => {
     if (!imageUrl) return;
     
     try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
+      const blob = await getImageBlobById(imageId);
+      if (!blob) throw new Error("Source blob lost");
+      
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -73,19 +93,19 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(downloadUrl);
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 100);
     } catch (err) {
-      console.error("Download failed:", err);
-      alert("Failed to download image. Please try again.");
+      console.error("Download from internal storage failed:", err);
+      alert("Failed to access internal storage for download.");
     }
   };
 
   if (loading) {
     return (
-      <div className={`bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center min-h-[200px] ${className}`}>
+      <div className={`bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center min-h-[200px] border border-gray-200 dark:border-gray-700 ${className}`}>
         <div className="flex flex-col items-center">
           <Loader2 className="animate-spin h-8 w-8 text-blue-500 mb-2" />
-          <span className="text-sm text-gray-500">Loading image...</span>
+          <span className="text-xs text-gray-400 font-medium">Retrieving from storage...</span>
         </div>
       </div>
     );
@@ -93,65 +113,58 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
 
   if (error || !imageUrl) {
     return (
-      <div className={`bg-gray-100 dark:bg-gray-800 rounded-xl flex flex-col items-center justify-center min-h-[200px] p-4 ${className}`}>
-        <ImageOff size={48} className="text-gray-400 mb-2" />
-        <p className="text-sm text-gray-500 text-center mb-2">Image not found or failed to load</p>
-        <button
-          onClick={handleRetry}
-          className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
+      <div className={`bg-gray-100 dark:bg-gray-800 rounded-xl flex flex-col items-center justify-center min-h-[200px] p-4 border border-dashed border-gray-300 dark:border-gray-700 ${className}`}>
+        <ImageOff size={40} className="text-gray-400 mb-3" />
+        <p className="text-sm text-gray-500 text-center font-medium">Image reference lost</p>
+        <button 
+          onClick={() => loadImage(true)}
+          className="mt-3 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-700 text-xs rounded-lg shadow-sm hover:shadow transition-all border border-gray-200 dark:border-gray-600"
         >
-          Retry Loading
+          <RefreshCw size={12} /> Retry Load
         </button>
-        {prompt && (
-          <p className="text-xs text-gray-400 mt-2 text-center line-clamp-2">Prompt: {prompt}</p>
-        )}
       </div>
     );
   }
 
   return (
-    <div className={`relative group ${className}`}>
+    <div className={`relative group overflow-hidden rounded-xl shadow-lg ${className}`}>
       <img 
         src={imageUrl} 
         alt={prompt || "Generated image"}
-        className="rounded-xl shadow-lg border-4 border-white dark:border-gray-700 w-full h-full object-cover"
-        onError={() => {
-          console.error('Image failed to load from URL:', imageUrl);
-          setError(true);
-        }}
+        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+        loading="lazy"
+        onError={() => setError(true)}
       />
       
-      <button
-        onClick={handleDownload}
-        className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-full shadow-md text-gray-800 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
-        title="Download image"
-      >
-        <Download size={16}/>
-      </button>
+      {/* Overlay Actions */}
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+        <button
+          onClick={handleDownload}
+          className="p-3 bg-white rounded-full text-gray-900 hover:scale-110 transition-transform shadow-xl"
+          title="Save to Device"
+        >
+          <Download size={20}/>
+        </button>
+      </div>
       
+      {/* Fix: Replaced extra closing </div> with )} to correctly terminate the conditional block */}
       {refinedPrompt && refinedPrompt !== prompt && (
         <div className="absolute top-2 left-2 z-10">
           <button
             onClick={() => setShowRefinedPrompt(!showRefinedPrompt)}
-            className="flex items-center gap-1 text-xs bg-black/70 text-white px-2 py-1 rounded-lg hover:bg-black/90 transition-colors"
-            title="Show enhanced prompt"
+            className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold bg-black/60 backdrop-blur-md text-white px-2.5 py-1.5 rounded-full hover:bg-black/80 transition-colors border border-white/20"
           >
-            <Wand2 size={10} />
-            <span>Enhanced</span>
+            <Sparkles size={10} className="text-blue-400" />
+            <span>AI Detail</span>
           </button>
           
           {showRefinedPrompt && (
-            <div className="absolute top-full left-0 mt-1 w-64 bg-black/90 text-white p-3 rounded-lg shadow-xl z-20">
-              <div className="text-xs text-gray-300 mb-1">Original:</div>
-              <div className="text-sm mb-2 line-clamp-2">{prompt}</div>
+            <div className="absolute top-full left-0 mt-2 w-72 bg-gray-900/95 backdrop-blur-xl text-white p-4 rounded-2xl shadow-2xl z-20 border border-white/10 animate-in fade-in slide-in-from-top-2">
+              <div className="text-[10px] text-gray-400 font-bold uppercase mb-1 tracking-widest">Original Concept</div>
+              <div className="text-xs mb-4 italic text-gray-300">"{prompt}"</div>
               
-              <div className="text-xs text-blue-300 mb-1">Enhanced:</div>
-              <div className="text-sm font-medium line-clamp-3">{refinedPrompt}</div>
-              
-              <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-2">
-                <Sparkles size={8} />
-                AI-enhanced for better results
-              </div>
+              <div className="text-[10px] text-blue-400 font-bold uppercase mb-1 tracking-widest">AI Refined Prompt</div>
+              <div className="text-sm leading-relaxed">{refinedPrompt}</div>
             </div>
           )}
         </div>

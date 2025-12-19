@@ -1,10 +1,26 @@
+
 import { NewsArticle } from '../types';
 import { CONFIG } from './config';
 
 const CACHE_KEY = 'serenity_news_cache';
 const CACHE_TIME_KEY = 'serenity_news_timestamp';
 
-// Helper: Fetch from Google RSS (Scraping/Proxy)
+// Helper for relative time formatting
+export const formatRelativeTime = (dateStr: string): string => {
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  } catch (e) {
+    return 'Recently';
+  }
+};
+
 const fetchGoogleRSSData = async (query: string): Promise<NewsArticle[]> => {
   const encodedQuery = encodeURIComponent(query);
   const rssUrl = `https://news.google.com/rss/search?q=${encodedQuery}&hl=en-IN&gl=IN&ceid=IN:en`;
@@ -31,8 +47,8 @@ const fetchGoogleRSSData = async (query: string): Promise<NewsArticle[]> => {
                 title: item.title,
                 description: item.description?.replace(/<[^>]*>?/gm, '') || '',
                 url: item.link,
-                image: item.enclosure?.link || `https://picsum.photos/seed/${index + Date.now()}/600/400`,
-                source: 'Google News',
+                image: item.enclosure?.link || `https://picsum.photos/seed/${encodeURIComponent(item.title)}/600/400`,
+                source: item.author || 'Global News',
                 publishedAt: item.pubDate
             }));
         }
@@ -42,14 +58,15 @@ const fetchGoogleRSSData = async (query: string): Promise<NewsArticle[]> => {
             const xml = parser.parseFromString(data.contents, "text/xml");
             const items = Array.from(xml.querySelectorAll("item")).slice(0, 10);
             return items.map((item, index) => {
+                const title = item.querySelector("title")?.textContent || "";
                 const descriptionHtml = item.querySelector("description")?.textContent || "";
                 const tempDiv = document.createElement("div");
                 tempDiv.innerHTML = descriptionHtml;
                 return {
-                    title: item.querySelector("title")?.textContent || "News Update",
+                    title: title,
                     description: tempDiv.textContent || "",
                     url: item.querySelector("link")?.textContent || "#",
-                    image: `https://picsum.photos/seed/${index + Date.now()}/600/400`,
+                    image: `https://picsum.photos/seed/${encodeURIComponent(title)}/600/400`,
                     source: item.querySelector("source")?.textContent || "Google News",
                     publishedAt: item.querySelector("pubDate")?.textContent || new Date().toISOString()
                 };
@@ -62,35 +79,26 @@ const fetchGoogleRSSData = async (query: string): Promise<NewsArticle[]> => {
   return [];
 };
 
-// Helper: Fetch from GNews API
 const fetchGNewsData = async (query: string): Promise<NewsArticle[]> => {
     if (!CONFIG.GNEWS_API_KEY) return [];
     
     try {
       const cleanTopic = query.trim();
       const gnewsUrl = `https://gnews.io/api/v4/search?q=${encodeURIComponent(cleanTopic)}&lang=en&max=8&token=${CONFIG.GNEWS_API_KEY}`;
-      const proxyUrls = [
-        `https://corsproxy.io/?${encodeURIComponent(gnewsUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(gnewsUrl)}`
-      ];
-
-      for (const url of proxyUrls) {
-          try {
-            const response = await fetch(url);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.articles) {
-                    return data.articles.map((article: any) => ({
-                        title: article.title,
-                        description: article.description,
-                        url: article.url,
-                        image: article.image || "https://picsum.photos/400/300",
-                        source: article.source.name,
-                        publishedAt: article.publishedAt
-                    }));
-                }
-            }
-          } catch(e) { console.log("GNews Proxy attempt failed"); }
+      
+      const response = await fetch(gnewsUrl);
+      if (response.ok) {
+          const data = await response.json();
+          if (data.articles) {
+              return data.articles.map((article: any) => ({
+                  title: article.title,
+                  description: article.description,
+                  url: article.url,
+                  image: article.image || `https://picsum.photos/seed/${encodeURIComponent(article.title)}/600/400`,
+                  source: article.source.name,
+                  publishedAt: article.publishedAt
+              }));
+          }
       }
     } catch (error) {
       console.warn("GNews API failed");
@@ -102,7 +110,7 @@ export const fetchLatestNews = async (query: string = 'technology', forceRefresh
   const cachedData = localStorage.getItem(CACHE_KEY);
   const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
   const now = Date.now();
-  const REFRESH_RATE = 20 * 60 * 1000;
+  const REFRESH_RATE = 15 * 60 * 1000; // 15 mins cache
 
   if (!forceRefresh && cachedData && cachedTime) {
     if ((now - parseInt(cachedTime)) < REFRESH_RATE) {
@@ -110,8 +118,6 @@ export const fetchLatestNews = async (query: string = 'technology', forceRefresh
     }
   }
 
-  // PARALLEL FETCHING: Run both GNews and Google RSS at the same time
-  console.log(`Fetching news for: ${query} from all sources...`);
   const [gnewsResult, rssResult] = await Promise.allSettled([
       fetchGNewsData(query),
       fetchGoogleRSSData(query)
@@ -120,39 +126,34 @@ export const fetchLatestNews = async (query: string = 'technology', forceRefresh
   const gnewsArticles = gnewsResult.status === 'fulfilled' ? gnewsResult.value : [];
   const rssArticles = rssResult.status === 'fulfilled' ? rssResult.value : [];
 
-  // Combine results
   let combined = [...gnewsArticles, ...rssArticles];
 
-  // Deduplicate based on URL or similar titles
-  const seenUrls = new Set();
+  // Smarter Deduplication based on title similarity
+  const seenTitles = new Set();
   combined = combined.filter(item => {
-      const duplicate = seenUrls.has(item.url);
-      seenUrls.add(item.url);
-      return !duplicate;
+      const titleKey = item.title.toLowerCase().substring(0, 30);
+      if (seenTitles.has(titleKey)) return false;
+      seenTitles.add(titleKey);
+      return true;
   });
 
-  // Limit total
-  combined = combined.slice(0, 10);
+  combined = combined.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()).slice(0, 12);
 
-  // Fallback if completely empty
   if (combined.length === 0) {
       combined = [
           {
-            title: "Global Technology & Science Update",
-            description: "No specific live news found right now, but technology continues to evolve.",
+            title: "Exploring the Future of Neural Intelligence",
+            description: "Researchers are breaking new ground in how localized AI agents process real-time news data.",
             url: "https://news.google.com",
-            image: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&auto=format&fit=crop&q=60",
-            source: "System Backup",
+            image: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&auto=format&fit=crop&q=80",
+            source: "Serenity Research",
             publishedAt: new Date().toISOString()
           }
       ];
   }
 
-  // Update Cache
-  if (combined.length > 0) {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(combined));
-    localStorage.setItem(CACHE_TIME_KEY, now.toString());
-  }
+  localStorage.setItem(CACHE_KEY, JSON.stringify(combined));
+  localStorage.setItem(CACHE_TIME_KEY, now.toString());
 
   return combined;
 };
@@ -160,14 +161,12 @@ export const fetchLatestNews = async (query: string = 'technology', forceRefresh
 export const checkAndNotifyNews = async () => {
   if (!("Notification" in window)) return;
   if (Notification.permission === "granted") {
-    const articles = await fetchLatestNews('trending', false);
-    if (articles.length > 0 && Math.random() > 0.7 && articles[0].source !== "System Backup") {
-       new Notification("Serenity Updates", {
+    const articles = await fetchLatestNews('top headlines', false);
+    if (articles.length > 0 && Math.random() > 0.8) {
+       new Notification(articles[0].source, {
          body: articles[0].title,
-         icon: '/favicon.ico'
+         icon: 'https://cdn-icons-png.flaticon.com/512/4712/4712109.png'
        });
     }
-  } else if (Notification.permission !== "denied") {
-    Notification.requestPermission();
   }
 };

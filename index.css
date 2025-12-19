@@ -1,104 +1,67 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* LaTeX Formula Styling */
-.latex-block {
-  @apply my-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-x-auto text-center;
-  font-family: "Latin Modern Math", "STIX Two Math", "Cambria Math", serif;
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
 }
 
-.latex-inline {
-  @apply px-1 bg-gray-100 dark:bg-gray-800 rounded;
-  font-family: "Latin Modern Math", "STIX Two Math", "Cambria Math", serif;
-  font-style: italic;
+.dark {
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
 }
 
-/* Markdown Styling */
-.prose {
-  @apply max-w-none;
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  background-color: #f8fafc;
 }
 
-.prose h1 {
-  @apply text-2xl font-bold mt-6 mb-4 text-gray-800 dark:text-white;
+.dark body {
+  background-color: #020617;
 }
 
-.prose h2 {
-  @apply text-xl font-bold mt-5 mb-3 text-gray-800 dark:text-white;
+/* Advanced Glassmorphism */
+.glass-morphism {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
-.prose h3 {
-  @apply text-lg font-bold mt-4 mb-2 text-gray-800 dark:text-white;
+.inner-glow {
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.prose p {
-  @apply my-2 text-gray-700 dark:text-gray-300;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track { 
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { 
+  background: rgba(148, 163, 184, 0.5); 
 }
 
-.prose ul {
-  @apply my-2 pl-5 space-y-1 list-disc;
-}
-
-.prose ol {
-  @apply my-2 pl-5 space-y-1 list-decimal;
-}
-
-.prose li {
-  @apply my-1 text-gray-700 dark:text-gray-300;
-}
-
-.prose code:not(pre code) {
-  @apply bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono;
-}
-
-.prose pre {
-  @apply bg-gray-100 dark:bg-gray-800 p-3 rounded-lg my-3 overflow-x-auto;
-}
-
-.prose pre code {
-  @apply text-sm font-mono bg-transparent p-0;
-}
-
-.prose a {
-  @apply text-blue-500 hover:text-blue-600 hover:underline;
-}
-
-.prose strong {
-  @apply font-bold text-gray-800 dark:text-white;
-}
-
-.prose em {
-  @apply italic;
-}
-
-/* Message bubbles with proper text wrapping */
-.chat-message {
-  @apply max-w-[90%] sm:max-w-[85%] md:max-w-[80%] lg:max-w-[75%];
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* Mobile optimizations */
-@media (max-width: 640px) {
-  .chat-message {
-    @apply max-w-[95%];
-  }
-  
-  .prose h1 { @apply text-xl; }
-  .prose h2 { @apply text-lg; }
-  .prose h3 { @apply text-base; }
-  
-  .prose pre {
-    @apply text-xs;
-  }
-}
-
-/* Animation for chat messages */
-@keyframes messageAppear {
+/* Animations */
+@keyframes slide-up-fade {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.95);
+    transform: translateY(20px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -107,74 +70,52 @@
 }
 
 .animate-message {
-  animation: messageAppear 0.3s ease-out forwards;
+  animation: slide-up-fade 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-/* Scrollbar styling */
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+/* Markdown Specific Styling */
+.prose pre {
+  background: #0f172a !important;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.prose code {
+  font-family: 'Fira Code', monospace;
+  color: #3b82f6;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
-  @apply bg-transparent;
+.dark .prose code {
+  color: #60a5fa;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.875rem;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-500;
+.prose th, .prose td {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
 }
 
-/* News article cards for mobile */
-.news-card {
-  @apply w-[calc(100vw-2.5rem)] max-w-[280px];
-  flex-shrink: 0;
-  scroll-snap-align: start;
+.prose th {
+  background: rgba(148, 163, 184, 0.05);
+  font-weight: 600;
 }
 
-/* Safe area for mobile devices */
+/* Mobile Safe Area */
 .safe-pb {
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-.safe-pt {
-  padding-top: max(1rem, env(safe-area-inset-top));
+.chat-container {
+  background-image: radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.03) 0%, transparent 50%);
 }
 
-/* Loading animations */
-@keyframes pulse-glow {
-  0%, 100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-/* Image display loading */
-.image-loading {
-  @apply bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900;
-  background-size: 200% 200%;
-  animation: gradientShift 3s ease infinite;
-}
-
-@keyframes gradientShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
+.dark .chat-container {
+  background-image: radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
 }

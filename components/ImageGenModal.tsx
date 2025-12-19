@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { generateImageHF } from '../services/imageService';
 import { X, Wand2, Download, Loader2, Image as ImageIcon } from 'lucide-react';
@@ -20,8 +21,9 @@ const ImageGenModal: React.FC<Props> = ({ isOpen, onClose, onImageGenerated }) =
     setGenerating(true);
     setResult(null);
     try {
-      const blob = await generateImageHF(prompt);
-      const url = URL.createObjectURL(blob);
+      // Fix: generateImageHF returns ImageGenerationResult, so we must access its .blob property for URL.createObjectURL
+      const generationResult = await generateImageHF(prompt);
+      const url = URL.createObjectURL(generationResult.blob);
       setResult(url);
     } catch (error) {
       alert("Failed to generate image. Check API key.");

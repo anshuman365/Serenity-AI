@@ -1,4 +1,6 @@
-import React from 'react';
+
+import React, { useMemo } from 'react';
+import { Copy, Check } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
@@ -6,71 +8,87 @@ interface MarkdownRendererProps {
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '' }) => {
-  // Function to render LaTeX formulas
-  const renderWithMarkdown = (text: string) => {
-    if (!text) return null;
-    
-    // Process LaTeX inline formulas: $...$
-    const latexInline = text.replace(/\$(.*?)\$/g, (match, formula) => {
-      return `<span class="latex-inline">${formula}</span>`;
-    });
-    
-    // Process LaTeX block formulas: $$...$$
-    const latexBlock = latexInline.replace(/\$\$(.*?)\$\$/g, (match, formula) => {
-      return `<div class="latex-block">${formula}</div>`;
-    });
-    
-    // Process markdown headers
-    let processed = latexBlock
-      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-4 mb-2">$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-5 mb-3">$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-6 mb-4">$1</h1>')
-      
-      // Process bold **text**
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>')
-      
-      // Process italic *text*
-      .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
-      
-      // Process italic _text_
-      .replace(/_(.*?)_/g, '<em class="italic">$1</em>')
-      
-      // Process code blocks ```
-      .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg my-3 overflow-x-auto text-sm"><code>$1</code></pre>')
-      
-      // Process inline code `code`
-      .replace(/`(.*?)`/g, '<code class="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono">$1</code>')
-      
-      // Process unordered lists
-      .replace(/^\s*[-*]\s+(.*$)/gim, '<li class="ml-4 list-disc">$1</li>')
-      .replace(/(<li.*?>.*?<\/li>\n?)+/g, '<ul class="my-2 pl-5 space-y-1">$&</ul>')
-      
-      // Process ordered lists
-      .replace(/^\s*\d+\.\s+(.*$)/gim, '<li class="ml-4 list-decimal">$1</li>')
-      .replace(/(<li class="ml-4 list-decimal".*?>.*?<\/li>\n?)+/g, '<ol class="my-2 pl-5 space-y-1">$&</ol>')
-      
-      // Process links [text](url)
-      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-600 hover:underline">$1</a>')
-      
-      // Process line breaks
-      .replace(/\n\n/g, '<br/><br/>')
-      .replace(/\n/g, '<br/>');
-    
-    // Wrap list items properly
-    processed = processed.replace(/<ul class="my-2 pl-5 space-y-1">\s*/g, '<ul class="my-2 pl-5 space-y-1">');
-    processed = processed.replace(/<ol class="my-2 pl-5 space-y-1">\s*/g, '<ol class="my-2 pl-5 space-y-1">');
-    
-    // Remove duplicate list wrappers
-    processed = processed.replace(/<\/ul>\s*<ul/g, '</ul><ul');
-    processed = processed.replace(/<\/ol>\s*<ol/g, '</ol><ol');
-    
-    return { __html: processed };
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
+
+  const processedContent = useMemo(() => {
+    if (!content) return null;
+
+    let html = content
+      // Escape HTML to prevent XSS but keep our injections
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      
+      // Code Blocks with IDs for copying
+      .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        const id = Math.random().toString(36).substr(2, 9);
+        return `
+          <div class="relative group my-4 rounded-xl overflow-hidden border border-white/10 shadow-lg">
+            <div class="flex items-center justify-between px-4 py-2 bg-gray-900/50 border-b border-white/5 text-[10px] text-gray-400 font-mono">
+              <span>${lang.toUpperCase() || 'CODE'}</span>
+              <button onclick="window.dispatchEvent(new CustomEvent('copy-code', {detail: {text: \`${code.trim()}\`, id: '${id}'}}))" class="hover:text-white transition-colors flex items-center gap-1">
+                Copy
+              </button>
+            </div>
+            <pre class="p-4 bg-gray-950 text-gray-300 text-sm overflow-x-auto font-mono"><code>${code.trim()}</code></pre>
+          </div>`;
+      })
+
+      // Tables
+      .replace(/\|(.+)\|/g, (match) => {
+        if (match.includes('---')) return '';
+        const cells = match.split('|').filter(c => c.trim() !== '');
+        return `<tr class="border-b border-gray-100 dark:border-gray-800">${cells.map(c => `<td class="p-2">${c.trim()}</td>`).join('')}</tr>`;
+      })
+
+      // Headers
+      .replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-4 mb-2 text-gray-900 dark:text-white">$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-5 mb-3 text-gray-900 dark:text-white">$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-6 mb-4 text-gray-900 dark:text-white">$1</h1>')
+
+      // Bold/Italic
+      .replace(/\*\*\*(.*?)\*\*\*/g, '<strong class="font-bold italic">$1</strong>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+
+      // Lists
+      .replace(/^\s*[-*+]\s+(.*$)/gim, '<li class="ml-4 list-disc text-gray-700 dark:text-gray-300">$1</li>')
+      .replace(/^\s*\d+\.\s+(.*$)/gim, '<li class="ml-4 list-decimal text-gray-700 dark:text-gray-300">$1</li>')
+
+      // Links
+      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" class="text-blue-500 hover:underline font-medium">$1</a>')
+
+      // Paragraphs (Double newlines)
+      .replace(/\n\n/g, '<p class="mb-4"></p>')
+      .replace(/\n/g, '<br/>');
+
+    // Wrap tables
+    html = html.replace(/(<tr.*?>.*?<\/tr>)+/g, '<div class="overflow-x-auto my-4"><table class="w-full text-left border border-gray-100 dark:border-gray-800 rounded-lg"><tbody>$&</tbody></table></div>');
+
+    return { __html: html };
+  }, [content]);
+
+  // Global handler for copy events from generated HTML
+  React.useEffect(() => {
+    const handler = (e: any) => {
+      const { text, id } = e.detail;
+      navigator.clipboard.writeText(text);
+      // We could use state here to show toast
+    };
+    window.addEventListener('copy-code', handler);
+    return () => window.removeEventListener('copy-code', handler);
+  }, []);
 
   return (
     <div 
-      className={`prose prose-sm max-w-none dark:prose-invert ${className}`}
-      dangerouslySetInnerHTML={renderWithMarkdown(content)}
+      className={`markdown-body prose prose-slate dark:prose-invert max-w-none text-sm leading-relaxed ${className}`}
+      dangerouslySetInnerHTML={processedContent || { __html: '' }}
     />
   );
 };
