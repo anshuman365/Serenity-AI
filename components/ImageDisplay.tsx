@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Download, Wand2, Sparkles, ImageOff, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Download, Wand2, Sparkles, ImageOff, Loader2, AlertCircle } from 'lucide-react';
 import { getImageBlobById } from '../services/storage';
 
 interface Props {
@@ -15,59 +15,50 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
   const [error, setError] = useState(false);
   const [showRefinedPrompt, setShowRefinedPrompt] = useState(false);
 
-  useEffect(() => {
-    const loadImage = async () => {
-      try {
-        setLoading(true);
-        setError(false);
-        
-        // First check localStorage for cached URL
-        const cachedUrls = localStorage.getItem('serenity_image_urls');
-        if (cachedUrls) {
-          const urlMap = JSON.parse(cachedUrls);
-          if (urlMap[imageId]) {
-            setImageUrl(urlMap[imageId]);
-            setLoading(false);
-            return;
-          }
-        }
-        
-        // If not in cache, load from IndexedDB
-        const blob = await getImageBlobById(imageId);
-        
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          setImageUrl(url);
-          
-          // Cache the URL in localStorage
-          const currentUrls = JSON.parse(localStorage.getItem('serenity_image_urls') || '{}');
-          currentUrls[imageId] = url;
-          localStorage.setItem('serenity_image_urls', JSON.stringify(currentUrls));
-        } else {
-          setError(true);
-        }
-      } catch (err) {
-        console.error("Failed to load image:", err);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (imageId) {
-      loadImage();
-    } else {
+  const loadImage = useCallback(async () => {
+    if (!imageId) {
       setError(true);
       setLoading(false);
+      return;
     }
 
-    // Clean up URL on unmount
+    try {
+      setLoading(true);
+      setError(false);
+      
+      console.log('Loading image:', imageId);
+      const blob = await getImageBlobById(imageId);
+      
+      if (blob && blob.size > 0) {
+        const url = URL.createObjectURL(blob);
+        console.log('Created blob URL for image:', imageId, 'Size:', blob.size);
+        setImageUrl(url);
+      } else {
+        console.error('No blob or empty blob for image:', imageId);
+        setError(true);
+      }
+    } catch (err) {
+      console.error('Failed to load image:', imageId, err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [imageId]);
+
+  useEffect(() => {
+    loadImage();
+
+    // Cleanup function
     return () => {
       if (imageUrl) {
         URL.revokeObjectURL(imageUrl);
       }
     };
-  }, [imageId]);
+  }, [imageId, loadImage]);
+
+  const handleRetry = () => {
+    loadImage();
+  };
 
   const handleDownload = async () => {
     if (!imageUrl) return;
@@ -85,7 +76,7 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
       URL.revokeObjectURL(downloadUrl);
     } catch (err) {
       console.error("Download failed:", err);
-      alert("Failed to download image");
+      alert("Failed to download image. Please try again.");
     }
   };
 
@@ -104,7 +95,13 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
     return (
       <div className={`bg-gray-100 dark:bg-gray-800 rounded-xl flex flex-col items-center justify-center min-h-[200px] p-4 ${className}`}>
         <ImageOff size={48} className="text-gray-400 mb-2" />
-        <p className="text-sm text-gray-500 text-center">Image not found</p>
+        <p className="text-sm text-gray-500 text-center mb-2">Image not found or failed to load</p>
+        <button
+          onClick={handleRetry}
+          className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
+        >
+          Retry Loading
+        </button>
         {prompt && (
           <p className="text-xs text-gray-400 mt-2 text-center line-clamp-2">Prompt: {prompt}</p>
         )}
@@ -118,7 +115,10 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
         src={imageUrl} 
         alt={prompt || "Generated image"}
         className="rounded-xl shadow-lg border-4 border-white dark:border-gray-700 w-full h-full object-cover"
-        onError={() => setError(true)}
+        onError={() => {
+          console.error('Image failed to load from URL:', imageUrl);
+          setError(true);
+        }}
       />
       
       <button
@@ -130,7 +130,7 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
       </button>
       
       {refinedPrompt && refinedPrompt !== prompt && (
-        <div className="absolute top-2 left-2">
+        <div className="absolute top-2 left-2 z-10">
           <button
             onClick={() => setShowRefinedPrompt(!showRefinedPrompt)}
             className="flex items-center gap-1 text-xs bg-black/70 text-white px-2 py-1 rounded-lg hover:bg-black/90 transition-colors"
@@ -141,7 +141,7 @@ const ImageDisplay: React.FC<Props> = ({ imageId, prompt, refinedPrompt, classNa
           </button>
           
           {showRefinedPrompt && (
-            <div className="absolute top-full left-0 mt-1 w-64 bg-black/90 text-white p-3 rounded-lg shadow-xl z-10">
+            <div className="absolute top-full left-0 mt-1 w-64 bg-black/90 text-white p-3 rounded-lg shadow-xl z-20">
               <div className="text-xs text-gray-300 mb-1">Original:</div>
               <div className="text-sm mb-2 line-clamp-2">{prompt}</div>
               
