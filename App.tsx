@@ -309,7 +309,7 @@ const App: React.FC = () => {
                     </div>
                  )}
                </div>
-               <h3 className="text-3xl font-bold dark:text-gray-100 mb-3 tracking-tight">How can I assist you, {settings.userName}?</h3>
+               <h3 className="text-3xl font-bold dark:text-gray-100 mb-3 tracking-tight">Hello {settings.partnerName}</h3>
                <p className="text-gray-500 dark:text-gray-400 mb-10 max-w-sm mx-auto text-sm leading-relaxed">
                  Experience the power of advanced intelligence coupled with a beautiful design.
                </p>
@@ -437,16 +437,15 @@ const App: React.FC = () => {
                 if(isSpeaking) stopSpeech();
                 setIsVoiceEnabled(!isVoiceEnabled);
               }}
-              className={`p-3 rounded-2xl transition-all ${isVoiceEnabled ? 'bg-blue-500/10 text-blue-500' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              className={`p-3 rounded-2xl transition-all ${isVoiceEnabled ? 'bg-blue-500/10 text-blue-500 shadow-inner' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               title={isVoiceEnabled ? "Voice Enabled" : "Voice Disabled"}
             >
-              {isVoiceEnabled ? <Volume2 size={20}/> : <VolumeX size={20}/>}
+              {isVoiceEnabled ? <Volume2 size={24}/> : <VolumeX size={24}/>}
             </button>
             <textarea 
               ref={textareaRef}
               value={input} 
               onChange={e=>setInput(e.target.value)} 
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
               placeholder={`Communicate with ${settings.partnerName}...`}
               className="flex-1 bg-transparent border-0 focus:ring-0 px-2 md:px-4 py-3 outline-none dark:text-white resize-none min-h-[48px] max-h-32 text-sm md:text-base font-medium placeholder:text-gray-400"
               rows={1}
