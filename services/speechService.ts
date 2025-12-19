@@ -1,64 +1,65 @@
 
 /**
  * Native Web Speech API Service
- * Provides free, zero-latency TTS using system-level neural voices.
+ * Robust implementation for free, zero-latency TTS.
  */
 
 let currentUtterance: SpeechSynthesisUtterance | null = null;
 
-// Helper to find the best available voice on the user's system
 const getBestVoice = () => {
   const voices = window.speechSynthesis.getVoices();
-  
-  // Preference list for high-quality natural voices
   const preferred = [
     'Google US English',
     'Google UK English Female',
     'Microsoft Aria Online',
     'Microsoft Jenny Online',
     'Apple Samantha',
-    'en-US',
-    'en-GB'
+    'en-US'
   ];
 
   for (const name of preferred) {
     const found = voices.find(v => v.name.includes(name) || v.lang === name);
     if (found) return found;
   }
-
   return voices.find(v => v.lang.startsWith('en')) || voices[0];
 };
 
 export const speakText = async (text: string): Promise<void> => {
   return new Promise((resolve) => {
-    // Cancel any ongoing speech
+    // Standard SpeechSynthesis sometimes hangs in Chrome. 
+    // This resume hack ensures the queue keeps moving.
+    const resumeInfinity = setInterval(() => {
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 5000);
+
     window.speechSynthesis.cancel();
 
-    // Remove markdown symbols and clean text for cleaner speech
+    // Clean text for cleaner speech
     const cleanText = text
       .replace(/[*_#`~]/g, '')
-      .replace(/\[.*?\]\(.*?\)/g, '') // Remove links
-      .substring(0, 1000); // Sanity limit for long responses
+      .replace(/\[.*?\]\(.*?\)/g, '') 
+      .replace(/```[\s\S]*?```/g, 'Code block skipped') // Don't read raw code
+      .substring(0, 1000);
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    // Configure voice
     const voice = getBestVoice();
-    if (voice) {
-      utterance.voice = voice;
-    }
+    if (voice) utterance.voice = voice;
     
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
-    utterance.volume = 1.0;
 
     utterance.onend = () => {
+      clearInterval(resumeInfinity);
       currentUtterance = null;
       resolve();
     };
 
-    utterance.onerror = (event) => {
-      console.error('Speech Synthesis Error:', event);
+    utterance.onerror = (e) => {
+      console.error('Speech Error:', e);
+      clearInterval(resumeInfinity);
       currentUtterance = null;
       resolve();
     };
@@ -66,8 +67,11 @@ export const speakText = async (text: string): Promise<void> => {
     currentUtterance = utterance;
     window.speechSynthesis.speak(utterance);
     
-    // Fallback resolve if the API hangs (happens in some mobile browsers)
-    setTimeout(resolve, 15000);
+    // Safety timeout
+    setTimeout(() => {
+      clearInterval(resumeInfinity);
+      resolve();
+    }, 30000);
   });
 };
 
@@ -76,7 +80,7 @@ export const stopSpeech = () => {
   currentUtterance = null;
 };
 
-// Pre-load voices (browsers load them asynchronously)
+// Warm up the API
 if (typeof window !== 'undefined' && window.speechSynthesis) {
   window.speechSynthesis.getVoices();
   if (window.speechSynthesis.onvoiceschanged !== undefined) {

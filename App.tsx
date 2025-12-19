@@ -23,8 +23,8 @@ import { ChatSession, Message, AppSettings, PageView, ImageHistoryItem, NewsArti
 const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
 
 const DEFAULT_SETTINGS: AppSettings = {
-  userName: 'User',
-  partnerName: 'Serenity AI',
+  userName: 'Serenity AI',
+  partnerName: 'User',
   systemPrompt: 'You are Serenity AI, a sophisticated AI assistant designed to provide intelligent, accurate, and helpful responses. You are knowledgeable in technology, science, creative arts, and general topics. You communicate in clear, professional English. Your responses should be well-structured, factual when possible, and appropriately detailed based on the query. Admit when you don\'t know something and offer to help with related topics.',
   customMemories: '',
   themeId: 'ocean',
@@ -258,7 +258,7 @@ const App: React.FC = () => {
         const activeChat = chats.find(c => c.id === activeChatId);
         const history = activeChat ? [...activeChat.messages, userMsg] : [userMsg];
         const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        const fullPrompt = `Current Date: ${today}\n${settings.systemPrompt}\nUser: ${settings.userName}\nAI: ${settings.partnerName}`;
+        const fullPrompt = `Current Date: ${today}\n${settings.systemPrompt}\nUser: ${settings.partnerName}\nAI: ${settings.userName}`;
         botContent = await generateOpenRouterResponse(history, fullPrompt);
       }
 
@@ -343,7 +343,7 @@ const App: React.FC = () => {
                  {msg.role === 'user' ? <User size={18} /> : <Bot size={18} />}
                </div>
                <div className={`flex flex-col gap-2 flex-1 min-w-0 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                 <div className={`px-5 py-3.5 rounded-2xl shadow-sm text-sm break-words max-w-full ${
+                 <div className={`px-5 py-3.5 rounded-2xl shadow-sm text-sm break-words max-w-[90%] md:max-w-[80%] ${
                    msg.role === 'user' 
                      ? 'bg-slate-800 dark:bg-slate-700 text-white rounded-tr-none' 
                      : `glass-morphism text-slate-700 dark:text-slate-200 rounded-tl-none border-gray-100 dark:border-white/5`
@@ -446,7 +446,7 @@ const App: React.FC = () => {
               ref={textareaRef}
               value={input} 
               onChange={e=>setInput(e.target.value)} 
-              placeholder={`Communicate with ${settings.partnerName}...`}
+              placeholder={`Communicate with ${settings.userName}...`}
               className="flex-1 bg-transparent border-0 focus:ring-0 px-2 md:px-4 py-3 outline-none dark:text-white resize-none min-h-[48px] max-h-32 text-sm md:text-base font-medium placeholder:text-gray-400"
               rows={1}
             />
@@ -519,7 +519,7 @@ const App: React.FC = () => {
                    {isSpeaking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse" />}
                 </div>
                 <div>
-                  <div className="text-xs font-black tracking-tight">{settings.partnerName}</div>
+                  <div className="text-xs font-black tracking-tight">{settings.userName}</div>
                   <div className="text-[9px] font-bold text-green-500 uppercase tracking-widest">Connected</div>
                 </div>
              </div>
