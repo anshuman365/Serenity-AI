@@ -11,8 +11,9 @@ import { generateOpenRouterResponse, classifyUserIntention, summarizeNewsForChat
 import { generateImageHF, type ImageGenerationResult } from './services/imageService';
 import { fetchLatestNews, checkAndNotifyNews } from './services/newsService';
 import { fetchBackendKeys } from './services/config';
-import { saveImageToDb, getAllImagesFromDb, requestStoragePermission } from './services/storage';
+import { saveImageToDb, getAllImagesFromDb, requestStoragePermission, getImageBlobById } from './services/storage';
 import SettingsModal from './components/SettingsModal';
+import ImageDisplay from './components/ImageDisplay';
 import { ChatSession, Message, AppSettings, PageView, ImageHistoryItem, NewsArticle } from './types';
 
 const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
@@ -117,35 +118,51 @@ const App: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const theme = THEMES[settings.themeId] || THEMES.ocean;
 
+  // Initialize app - load data
   useEffect(() => {
-    const savedChats = localStorage.getItem('serenity_chats');
-    if (savedChats) {
+    const initializeApp = async () => {
       try {
-        setChats(JSON.parse(savedChats));
-      } catch { }
-    }
-    
-    const hydrateImages = async () => {
-      const dbImages = await getAllImagesFromDb();
-      setImageHistory(dbImages);
+        // Load chats from localStorage
+        const savedChats = localStorage.getItem('serenity_chats');
+        if (savedChats) {
+          try {
+            setChats(JSON.parse(savedChats));
+          } catch { }
+        }
+        
+        // Load images from IndexedDB
+        const dbImages = await getAllImagesFromDb();
+        setImageHistory(dbImages);
+        
+        // Store image URLs in memory for quick access
+        const imageUrlMap = new Map(dbImages.map(img => [img.id, img.url]));
+        localStorage.setItem('serenity_image_urls', JSON.stringify(Object.fromEntries(imageUrlMap)));
+        
+      } catch (error) {
+        console.error("Error initializing app:", error);
+      }
     };
     
-    hydrateImages();
+    initializeApp();
     requestStoragePermission();
   }, []);
 
+  // Update localStorage when chats change
   useEffect(() => {
     localStorage.setItem('serenity_chats', JSON.stringify(chats));
   }, [chats]);
 
+  // Update localStorage when settings change
   useEffect(() => {
     localStorage.setItem('serenity_settings', JSON.stringify(settings));
   }, [settings]);
 
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chats, currentChatId, isTyping, activePage]);
 
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -153,6 +170,7 @@ const App: React.FC = () => {
     }
   }, [input]);
 
+  // Dark Mode Logic
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -162,6 +180,7 @@ const App: React.FC = () => {
     localStorage.setItem('serenity_theme_mode', JSON.stringify(darkMode));
   }, [darkMode]);
 
+  // Background tasks
   useEffect(() => {
     fetchBackendKeys();
     fetchLatestNews('technology', false).then(setCachedNews);
@@ -246,7 +265,6 @@ const App: React.FC = () => {
       console.log("Intention:", intention);
 
       let botContent = "";
-      let generatedImageUrl = undefined;
       let generatedImageId = undefined;
       let newsArticlesForChat: NewsArticle[] = [];
       let imageGenerationDetails: { originalPrompt: string; refinedPrompt: string } | null = null;
@@ -255,19 +273,20 @@ const App: React.FC = () => {
         setLoadingAction('Refining Prompt & Generating Image...');
         
         const result: ImageGenerationResult = await generateImageHF(intention.query);
-        generatedImageUrl = URL.createObjectURL(result.blob);
         generatedImageId = generateId();
         
         const newImgItem: ImageHistoryItem = {
           id: generatedImageId,
-          url: generatedImageUrl,
+          url: URL.createObjectURL(result.blob),
           prompt: result.originalPrompt,
           refinedPrompt: result.refinedPrompt,
           createdAt: Date.now()
         };
         
+        // Save to IndexedDB
         await saveImageToDb(newImgItem, result.blob);
         
+        // Update imageHistory state
         setImageHistory(prev => [newImgItem, ...prev]);
         
         imageGenerationDetails = {
@@ -304,7 +323,6 @@ const App: React.FC = () => {
         id: generateId(),
         role: 'assistant',
         content: botContent,
-        image: generatedImageUrl,
         imageId: generatedImageId,
         newsArticles: newsArticlesForChat.length > 0 ? newsArticlesForChat : undefined,
         timestamp: Date.now(),
@@ -398,6 +416,7 @@ const App: React.FC = () => {
            )}
            
            {activeChat?.messages.map(msg => {
+             // Find image in imageHistory
              const imgItem = msg.imageId ? imageHistory.find(img => img.id === msg.imageId) : null;
              
              return (
@@ -405,77 +424,40 @@ const App: React.FC = () => {
                  <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-600 text-white' : `${theme.msgUser} text-white`}`}>
                    {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
                  </div>
-                 <div className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                   <div className={`px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-sm text-sm whitespace-pre-wrap leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 dark:bg-gray-700 text-white rounded-tr-sm' : `${theme.msgBot} border text-gray-700 dark:text-gray-200 rounded-tl-sm`}`}>
+                 <div className={`flex flex-col gap-2 flex-1 min-w-0 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                   
+                   {/* FIXED: Chat message with proper width control */}
+                   <div className={`px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-sm text-sm whitespace-pre-wrap leading-relaxed break-words max-w-full w-fit ${
+                     msg.role === 'user' 
+                       ? 'bg-gray-800 dark:bg-gray-700 text-white rounded-tr-sm' 
+                       : `${theme.msgBot} border text-gray-700 dark:text-gray-200 rounded-tl-sm`
+                   }`}>
                      {msg.content}
                    </div>
                    
-                   {msg.image && (
-                     <div className="relative group">
-                       <img src={msg.image} alt="Generated" className="rounded-xl shadow-lg border-4 border-white dark:border-gray-700 max-w-full bg-gray-200 dark:bg-gray-800 min-h-[200px]" />
-                       <a 
-                         href={msg.image} 
-                         download={`serenity-${Date.now()}.png`}
-                         className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-full shadow-md text-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
-                       >
-                         <Download size={16}/>
-                       </a>
-                       
-                       {imgItem?.refinedPrompt && imgItem.refinedPrompt !== imgItem.prompt && (
-                         <div className="mt-2">
-                           <button
-                             onClick={() => {
-                               const newExpanded = new Set(expandedRefinements);
-                               if (newExpanded.has(msg.imageId!)) {
-                                 newExpanded.delete(msg.imageId!);
-                               } else {
-                                 newExpanded.add(msg.imageId!);
-                               }
-                               setExpandedRefinements(newExpanded);
-                             }}
-                             className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 transition-colors"
-                           >
-                             <Wand2 size={12} />
-                             <span>View Enhanced Prompt</span>
-                           </button>
-                           
-                           {expandedRefinements.has(msg.imageId!) && (
-                             <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-                               <div className="mb-2">
-                                 <div className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">Your Original Prompt</div>
-                                 <div className="text-gray-600 dark:text-gray-300 text-sm">
-                                   {imgItem.prompt}
-                                 </div>
-                               </div>
-                               
-                               <div className="mb-2">
-                                 <div className="text-blue-500 text-[10px] uppercase tracking-wider mb-1 font-medium">AI-Enhanced Version</div>
-                                 <div className="text-gray-800 dark:text-gray-100 text-sm font-medium">
-                                   {imgItem.refinedPrompt}
-                                 </div>
-                               </div>
-                               
-                               <div className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
-                                 <Sparkles size={10} />
-                                 Enhanced with AI for better image quality
-                               </div>
-                             </div>
-                           )}
-                         </div>
-                       )}
+                   {/* Image Display */}
+                   {msg.imageId && (
+                     <div className="mt-2 max-w-full">
+                       <ImageDisplay
+                         imageId={msg.imageId}
+                         prompt={imgItem?.prompt}
+                         refinedPrompt={imgItem?.refinedPrompt}
+                         className="max-w-full min-h-[200px] rounded-xl"
+                       />
                      </div>
                    )}
 
+                   {/* News Articles - FIXED for mobile overflow */}
                    {msg.newsArticles && msg.newsArticles.length > 0 && (
                      <div className="w-full overflow-hidden">
                        <div className="flex gap-3 overflow-x-auto pb-2 pt-1 custom-scrollbar snap-x -mx-1 px-1">
-                         {msg.newsArticles.map((article, idx) => (
+                         {msg.newsArticles.slice(0, 3).map((article, idx) => (
                            <a 
                              key={idx} 
                              href={article.url} 
                              target="_blank" 
                              rel="noreferrer"
-                             className="flex-shrink-0 w-[85vw] max-w-[280px] bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-all group snap-start"
+                             className="flex-shrink-0 w-[calc(100vw-2rem)] max-w-[280px] bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-all group snap-start"
                            >
                              <div className="h-32 overflow-hidden relative">
                                <img src={article.image} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -491,6 +473,9 @@ const App: React.FC = () => {
                            </a>
                          ))}
                        </div>
+                       <div className="text-xs text-gray-400 mt-1 text-center">
+                         Scroll horizontally to see more articles
+                       </div>
                      </div>
                    )}
 
@@ -505,9 +490,9 @@ const App: React.FC = () => {
                 <div className={`w-8 h-8 rounded-full ${theme.msgUser} flex items-center justify-center text-white animate-pulse`}>
                   <Bot size={14}/>
                 </div>
-                <div className="bg-white dark:bg-gray-800 px-4 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500 flex items-center gap-2 shadow-sm">
+                <div className="bg-white dark:bg-gray-800 px-4 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500 flex items-center gap-2 shadow-sm max-w-full break-words">
                    {loadingAction ? (
-                     <span className="font-medium bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-500 animate-pulse">{loadingAction}</span>
+                     <span className="font-medium bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-500 animate-pulse break-words">{loadingAction}</span>
                    ) : (
                      <div className="flex gap-1.5 h-full items-center">
                         <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"/>
@@ -554,9 +539,35 @@ const App: React.FC = () => {
           {imageHistory.map(img => (
             <div key={img.id} className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-gray-100 dark:border-gray-700 group">
               <div className="relative aspect-square">
-                <img src={img.url} alt={img.prompt} className="w-full h-full object-cover"/>
+                <ImageDisplay
+                  imageId={img.id}
+                  prompt={img.prompt}
+                  refinedPrompt={img.refinedPrompt}
+                  className="w-full h-full"
+                />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <a href={img.url} download={`serenity-${img.id}.png`} className="p-3 bg-white rounded-full text-gray-900 hover:scale-110 transition-transform"><Download size={20}/></a>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const blob = await getImageBlobById(img.id);
+                        if (blob) {
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `serenity-${img.id}.png`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
+                        }
+                      } catch (error) {
+                        console.error("Failed to download image:", error);
+                      }
+                    }}
+                    className="p-3 bg-white rounded-full text-gray-900 hover:scale-110 transition-transform"
+                  >
+                    <Download size={20}/>
+                  </button>
                 </div>
               </div>
               <div className="p-3">

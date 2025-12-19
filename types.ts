@@ -3,7 +3,6 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
-  image?: string;
   imageId?: string;
   newsArticles?: NewsArticle[];
   metadata?: {
